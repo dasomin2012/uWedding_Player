@@ -5,13 +5,14 @@
 namespace uwp {
 
 class VideoWidget;
+class LivePlayerPool;
 
 // 확장 모니터로 송출되는 Live 윈도우.
 // frameless + fullscreen 기본, 보조 모니터가 없으면 dev 모드로 윈도우 표시.
 class LiveWindow : public QWidget {
     Q_OBJECT
 public:
-    explicit LiveWindow(QWidget* parent = nullptr);
+    explicit LiveWindow(LivePlayerPool* pool, QWidget* parent = nullptr);
     ~LiveWindow() override;
 
     void setCanvasSize(int width, int height);

@@ -40,6 +40,10 @@ bool Settings::load(const QString& path) {
     m_takeDefaultMode        = s.value("take_default_mode").toString(m_takeDefaultMode);
     m_takeFadeDurationMs     = s.value("take_fade_duration_ms").toInt(m_takeFadeDurationMs);
     m_testVideoPath          = s.value("test_video_path").toString(m_testVideoPath);
+    m_ffmpegPath             = s.value("ffmpeg_path").toString(m_ffmpegPath);
+    m_snapshotCacheDir       = s.value("snapshot_cache_dir").toString(m_snapshotCacheDir);
+    m_mediaDir               = s.value("media_dir").toString(m_mediaDir);
+    m_sceneScratch           = s.value("scene_scratch").toString(m_sceneScratch);
 
     const QJsonObject nova   = s.value("novastar").toObject();
     m_novaStar.enabled       = nova.value("enabled").toBool(m_novaStar.enabled);
@@ -68,6 +72,10 @@ bool Settings::save(const QString& path) const {
     s["take_default_mode"]       = m_takeDefaultMode;
     s["take_fade_duration_ms"]   = m_takeFadeDurationMs;
     s["test_video_path"]         = m_testVideoPath;
+    s["ffmpeg_path"]             = m_ffmpegPath;
+    s["snapshot_cache_dir"]      = m_snapshotCacheDir;
+    s["media_dir"]               = m_mediaDir;
+    s["scene_scratch"]           = m_sceneScratch;
     s["novastar"]                = nova;
 
     QJsonObject root;

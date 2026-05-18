@@ -19,6 +19,9 @@ endif()
 if(MSVC)
     add_compile_options(/utf-8 /MP /W3 /permissive-)
     add_compile_definitions(UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+    # Qt 5.15.2 + 최신 MSVC(14.4x+) 의 stdext 제거 비호환을 우회.
+    # 모든 번역 단위(autogen 포함) 최상단에 shim 강제 포함.
+    add_compile_options("/FI${CMAKE_SOURCE_DIR}/src/compat/msvc_stdext_shim.h")
 endif()
 
 # ------------------------------------------------------------------
@@ -75,6 +78,28 @@ set(UWP_SOURCES
 
     src/player/VideoWidget.h
     src/player/VideoWidget.cpp
+    src/player/VlcInstance.h
+    src/player/VlcInstance.cpp
+    src/player/LivePlayerPool.h
+    src/player/LivePlayerPool.cpp
+    src/player/SnapshotCache.h
+    src/player/SnapshotCache.cpp
+
+    src/scene/Layer.h
+    src/scene/Layer.cpp
+    src/scene/SceneModel.h
+    src/scene/SceneModel.cpp
+    src/scene/SceneSerializer.h
+    src/scene/SceneSerializer.cpp
+
+    src/editor/PreviewCanvas.h
+    src/editor/PreviewCanvas.cpp
+    src/editor/LayerItem.h
+    src/editor/LayerItem.cpp
+    src/editor/MediaListWidget.h
+    src/editor/MediaListWidget.cpp
+    src/editor/PropertyPanel.h
+    src/editor/PropertyPanel.cpp
 )
 
 # Phase 1 에서는 console subsystem 으로 빌드하여 qDebug 출력을 보기 쉽게 한다.
@@ -103,26 +128,43 @@ if(UWP_HAS_VLC)
             "${LIBVLC_ROOT}/plugins" "$<TARGET_FILE_DIR:uWeddingPlayer>/plugins"
         COMMENT "Copying libVLC runtime next to uWeddingPlayer.exe"
         VERBATIM)
+
+    # plugins.dat 캐시 생성 → libvlc_new 가 365개 플러그인을 재스캔하지 않음
+    # (없으면 앱 시작 시 ~25초 블로킹). copy_directory 가 캐시를 지우므로 매번 재생성.
+    if(EXISTS "${LIBVLC_ROOT}/vlc-cache-gen.exe")
+        add_custom_command(TARGET uWeddingPlayer POST_BUILD
+            COMMAND "${LIBVLC_ROOT}/vlc-cache-gen.exe"
+                    "$<TARGET_FILE_DIR:uWeddingPlayer>/plugins"
+            COMMENT "Generating libVLC plugins.dat cache"
+            VERBATIM)
+    else()
+        message(WARNING "vlc-cache-gen.exe not found — libVLC startup will be slow")
+    endif()
 endif()
 
 # ------------------------------------------------------------------
-# windeployqt 편의 타겟
-#   cmake --build build --target deploy_qt
+# windeployqt 자동 실행 (post-build)
+#   비활성화하려면: cmake -DUWP_AUTO_WINDEPLOYQT=OFF
 # ------------------------------------------------------------------
-if(WIN32)
+option(UWP_AUTO_WINDEPLOYQT "Run windeployqt automatically after build" ON)
+
+if(WIN32 AND UWP_AUTO_WINDEPLOYQT)
     get_target_property(_qmake_path Qt5::qmake IMPORTED_LOCATION)
     if(_qmake_path)
         get_filename_component(_qt_bin_dir "${_qmake_path}" DIRECTORY)
         find_program(WINDEPLOYQT_EXE windeployqt HINTS "${_qt_bin_dir}")
         if(WINDEPLOYQT_EXE)
-            add_custom_target(deploy_qt
+            add_custom_command(TARGET uWeddingPlayer POST_BUILD
                 COMMAND "${WINDEPLOYQT_EXE}"
+                        --verbose 0
                         --no-translations
                         --no-system-d3d-compiler
                         --no-opengl-sw
                         "$<TARGET_FILE:uWeddingPlayer>"
-                DEPENDS uWeddingPlayer
-                COMMENT "Running windeployqt")
+                COMMENT "Running windeployqt"
+                VERBATIM)
+        else()
+            message(WARNING "windeployqt not found near ${_qt_bin_dir} — skipping auto-deploy")
         endif()
     endif()
 endif()

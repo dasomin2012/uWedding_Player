@@ -12,7 +12,7 @@
 
 namespace uwp {
 
-LiveWindow::LiveWindow(QWidget* parent)
+LiveWindow::LiveWindow(LivePlayerPool* pool, QWidget* parent)
     : QWidget(parent)
 {
     setWindowTitle("uWeddingPlayer — Live");
@@ -23,7 +23,7 @@ LiveWindow::LiveWindow(QWidget* parent)
     pal.setColor(QPalette::Window, Qt::black);
     setPalette(pal);
 
-    m_videoWidget = new VideoWidget(this);
+    m_videoWidget = new VideoWidget(pool, this);
     m_videoWidget->setGeometry(0, 0, m_canvasWidth, m_canvasHeight);
 }
 
@@ -47,24 +47,23 @@ void LiveWindow::showOnMonitor(int monitorIndex) {
 
     int idx = monitorIndex;
     if (idx < 0 || idx >= screens.size()) {
-        if (screens.size() > 1) {
-            qWarning() << "LiveWindow: output_monitor_index" << monitorIndex
-                       << "invalid, falling back to screen 1 (secondary)";
-            idx = 1;
-        } else {
-            qInfo() << "LiveWindow: only primary monitor available — entering dev mode";
-            idx = 0;
-        }
+        const int fallback = (screens.size() > 1) ? screens.size() - 1 : 0;
+        qWarning() << "LiveWindow: output_monitor_index" << monitorIndex
+                   << "out of range (screens =" << screens.size()
+                   << ") — falling back to screen" << fallback;
+        idx = fallback;
     }
 
+    // 보조 모니터가 없으면 dev 모드(창 모드)로 표시
     m_devMode = (screens.size() <= 1);
     QScreen* target = screens.at(idx);
     const QRect g   = target->geometry();
 
     if (m_devMode) {
+        qInfo() << "LiveWindow: single monitor only — dev windowed mode 1280x720";
         setWindowFlags(Qt::Window);
         setCursor(Qt::ArrowCursor);
-        resize(960, 540);
+        resize(1280, 720);
         move(g.x() + 100, g.y() + 100);
         show();
     } else {

@@ -2,14 +2,20 @@
 
 #include "windows/ControlWindow.h"
 #include "windows/LiveWindow.h"
+#include "player/LivePlayerPool.h"
+#include "player/SnapshotCache.h"
+#include "scene/SceneModel.h"
+#include "scene/SceneSerializer.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QFileDialog>
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QScreen>
+#include <QStatusBar>
 #include <QStringList>
 #include <QDebug>
 
@@ -28,6 +34,15 @@ QString Application::resolveSettingsPath() const {
     return dataDir + "/settings.json";
 }
 
+QString Application::resolveScenePath() const {
+    QString p = m_settings.sceneScratch();
+    if (QDir::isRelativePath(p)) {
+        p = QDir(QCoreApplication::applicationDirPath()).filePath(p);
+    }
+    QDir().mkpath(QFileInfo(p).absolutePath());
+    return p;
+}
+
 bool Application::initialize() {
     m_settingsPath = resolveSettingsPath();
 
@@ -38,15 +53,43 @@ bool Application::initialize() {
         qInfo() << "Settings: loaded from" << m_settingsPath;
     }
 
+    // ----- 미디어 서브시스템 (윈도우보다 먼저, 더 오래 살아야 함) -----
+    m_playerPool    = std::make_unique<LivePlayerPool>();
+    m_snapshotCache = std::make_unique<SnapshotCache>(&m_settings);
+
+    // ----- 씬 모델 (편집 단일 진실 소스) -----
+    m_scene = std::make_unique<SceneModel>();
+    m_scene->setCanvasSize(QSize(m_settings.canvasWidth(),
+                                 m_settings.canvasHeight()));
+    const QString scenePath = resolveScenePath();
+    if (SceneSerializer::loadScene(*m_scene, scenePath)) {
+        qInfo() << "Scene: loaded scratch scene from" << scenePath;
+    }
+
     // ----- 윈도우 생성 -----
-    m_controlWindow = std::make_unique<ControlWindow>(&m_settings);
-    m_liveWindow    = std::make_unique<LiveWindow>();
+    m_controlWindow = std::make_unique<ControlWindow>(
+        &m_settings, m_scene.get(), m_snapshotCache.get());
+    m_liveWindow    = std::make_unique<LiveWindow>(m_playerPool.get());
     m_liveWindow->setCanvasSize(m_settings.canvasWidth(), m_settings.canvasHeight());
 
     connect(m_controlWindow.get(), &ControlWindow::selectOutputMonitorRequested,
             this, &Application::onSelectOutputMonitorRequested);
     connect(m_controlWindow.get(), &ControlWindow::openSettingsRequested,
             this, &Application::onOpenSettingsRequested);
+    connect(m_controlWindow.get(), &ControlWindow::playTestVideoRequested,
+            this, &Application::onPlayTestVideoRequested);
+    connect(m_controlWindow.get(), &ControlWindow::saveSceneRequested,
+            this, &Application::onSaveSceneRequested);
+    connect(m_controlWindow.get(), &ControlWindow::loadSceneRequested,
+            this, &Application::onLoadSceneRequested);
+
+    // 스냅샷 실패는 상태바로 안내 (성공은 PreviewCanvas/MediaList 가 직접 수신)
+    connect(m_snapshotCache.get(), &SnapshotCache::snapshotFailed,
+            this, [this](const QString& media, const QString& reason) {
+                qWarning() << "Snapshot failed:" << media << "-" << reason;
+                m_controlWindow->setStatusText(
+                    tr("Snapshot failed: %1 (%2)").arg(media, reason));
+            });
 
     // ----- 표시 -----
     m_controlWindow->show();
@@ -60,7 +103,7 @@ bool Application::initialize() {
     } else if (!QFileInfo::exists(videoPath)) {
         qWarning() << "test_video_path does not exist:" << videoPath;
     } else {
-        m_liveWindow->playVideo(videoPath);
+        m_liveWindow->playVideo(videoPath);     // Live: 실제 재생 (편집과 독립)
     }
 
     return true;
@@ -68,6 +111,12 @@ bool Application::initialize() {
 
 void Application::shutdown() {
     if (m_liveWindow) m_liveWindow->stopVideo();
+    if (m_scene) {
+        SceneSerializer::saveScene(*m_scene, resolveScenePath());
+    }
+    if (!m_settingsPath.isEmpty()) {
+        m_settings.save(m_settingsPath);   // media_dir 등 보존
+    }
 }
 
 void Application::onSelectOutputMonitorRequested() {
@@ -112,6 +161,48 @@ void Application::onOpenSettingsRequested() {
         m_controlWindow.get(),
         tr("Settings"),
         tr("Phase 1: edit data/settings.json manually.\n\nPath:\n%1").arg(m_settingsPath));
+}
+
+void Application::onPlayTestVideoRequested() {
+    const QString start = m_settings.testVideoPath().isEmpty()
+                              ? QCoreApplication::applicationDirPath()
+                              : m_settings.testVideoPath();
+
+    const QString path = QFileDialog::getOpenFileName(
+        m_controlWindow.get(),
+        tr("Play Test Video"),
+        start,
+        tr("Video files (*.mp4 *.mov *.avi *.mkv *.wmv);;All files (*.*)"));
+
+    if (path.isEmpty()) return;
+
+    if (m_liveWindow->playVideo(path)) {
+        m_settings.setTestVideoPath(path);
+        m_settings.save(m_settingsPath);
+        m_controlWindow->setStatusText(tr("Live playing: %1").arg(path));
+    } else {
+        QMessageBox::warning(
+            m_controlWindow.get(),
+            tr("Playback Failed"),
+            tr("Could not play:\n%1\n\n"
+               "If libVLC SDK was missing at build time, video is disabled.").arg(path));
+    }
+}
+
+void Application::onSaveSceneRequested() {
+    const QString p = resolveScenePath();
+    if (SceneSerializer::saveScene(*m_scene, p))
+        m_controlWindow->setStatusText(tr("Scene saved: %1").arg(p));
+    else
+        m_controlWindow->setStatusText(tr("Scene save failed"));
+}
+
+void Application::onLoadSceneRequested() {
+    const QString p = resolveScenePath();
+    if (SceneSerializer::loadScene(*m_scene, p))
+        m_controlWindow->setStatusText(tr("Scene loaded: %1").arg(p));
+    else
+        m_controlWindow->setStatusText(tr("No scene file at %1").arg(p));
 }
 
 } // namespace uwp
