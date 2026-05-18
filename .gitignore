@@ -1,0 +1,57 @@
+# Build directories
+build/
+build-*/
+out/
+cmake-build-*/
+
+# Visual Studio
+.vs/
+*.vcxproj.user
+*.suo
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Qt
+*.pro.user
+*.pro.user.*
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+
+# Compiled
+*.obj
+*.o
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# Third-party (대용량)
+third_party/libvlc/
+third_party/ffmpeg/
+
+# Python venv (현재 가상환경)
+.venv/
+__pycache__/
+
+# IDE
+.idea/
+.vscode/
+*.user
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Data (런타임 생성)
+data/programs/thumbs/
+data/programs/cache/
+*.log
