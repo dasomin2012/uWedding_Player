@@ -6,6 +6,7 @@
 #include "player/SnapshotCache.h"
 #include "scene/SceneModel.h"
 #include "scene/SceneSerializer.h"
+#include "take/TakeController.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -17,6 +18,7 @@
 #include <QScreen>
 #include <QStatusBar>
 #include <QStringList>
+#include <QTimer>
 #include <QDebug>
 
 namespace uwp {
@@ -83,6 +85,25 @@ bool Application::initialize() {
     connect(m_controlWindow.get(), &ControlWindow::loadSceneRequested,
             this, &Application::onLoadSceneRequested);
 
+    // ----- Take (Preview SceneModel -> Live) -----
+    m_takeController = std::make_unique<TakeController>(
+        m_scene.get(), m_liveWindow.get(), &m_settings);
+    connect(m_controlWindow.get(), &ControlWindow::takeRequested,
+            m_takeController.get(), &TakeController::take);
+    connect(m_controlWindow.get(), &ControlWindow::takeModeChanged,
+            this, [this](const QString& mode) {
+                const auto m = (mode.toLower() == "cut")
+                    ? TransitionEffect::Mode::Cut
+                    : TransitionEffect::Mode::Fade;
+                m_takeController->setMode(m);
+                m_settings.setTakeDefaultMode(mode.toLower());
+                m_settings.save(m_settingsPath);
+            });
+    connect(m_takeController.get(), &TakeController::taken,
+            this, [this](int n) {
+                m_controlWindow->setStatusText(tr("Take: %1 layer(s) → Live").arg(n));
+            });
+
     // 스냅샷 실패는 상태바로 안내 (성공은 PreviewCanvas/MediaList 가 직접 수신)
     connect(m_snapshotCache.get(), &SnapshotCache::snapshotFailed,
             this, [this](const QString& media, const QString& reason) {
@@ -104,6 +125,12 @@ bool Application::initialize() {
         qWarning() << "test_video_path does not exist:" << videoPath;
     } else {
         m_liveWindow->playVideo(videoPath);     // Live: 실제 재생 (편집과 독립)
+    }
+
+    // 검증/자동화 훅: UWP_AUTOTAKE=1 이면 시작 후 자동으로 Take 1회.
+    if (qEnvironmentVariableIntValue("UWP_AUTOTAKE") > 0) {
+        QTimer::singleShot(1500, m_takeController.get(), &TakeController::take);
+        qInfo() << "UWP_AUTOTAKE enabled — auto Take in 1500ms";
     }
 
     return true;

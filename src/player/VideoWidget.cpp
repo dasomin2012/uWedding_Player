@@ -43,13 +43,13 @@ void VideoWidget::bindSurface() {
     m_bound = true;
 }
 
-bool VideoWidget::play(const QString& path) {
+bool VideoWidget::play(const QString& path, bool loop) {
     if (!m_player) {
         qWarning() << "VideoWidget::play: no player (stub/no SDK)";
         return false;
     }
     bindSurface();
-    return m_player->play(path, /*loop=*/true);
+    return m_player->play(path, loop);
 }
 
 void VideoWidget::stop() {
@@ -63,5 +63,13 @@ void VideoWidget::pause() {
 bool VideoWidget::isPlaying() const {
     return m_player && m_player->isPlaying();
 }
+
+bool VideoWidget::isReady() const {
+    // 강한 신호: 실제 첫 프레임 렌더 완료까지 대기 (스태거 방지 핵심)
+    return m_player ? m_player->isPrimed() : true;
+}
+
+void VideoWidget::freeze() { if (m_player) m_player->freeze(); }
+void VideoWidget::resume() { if (m_player) m_player->resume(); }
 
 } // namespace uwp

@@ -21,6 +21,10 @@ public:
     void stop();
     void pause();                             // 토글
     bool isPlaying() const;
+    bool hasVideoOutput() const;              // vout 모듈 생성 여부(약한 신호)
+    bool isPrimed() const;                    // 실제 첫 프레임 렌더 완료(강한 신호)
+    void freeze();                            // 첫 프레임에서 일시정지(cue)
+    void resume();                            // 재개
 
     LivePlayer(const LivePlayer&)            = delete;
     LivePlayer& operator=(const LivePlayer&) = delete;

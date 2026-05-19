@@ -13,6 +13,7 @@ class LiveWindow;
 class LivePlayerPool;
 class SnapshotCache;
 class SceneModel;
+class TakeController;
 
 // 두 윈도우(Control, Live)의 라이프타임과 Settings I/O 를 묶는 코디네이터.
 class Application : public QObject {
@@ -44,6 +45,7 @@ private:
     std::unique_ptr<SceneModel>     m_scene;
     std::unique_ptr<ControlWindow>  m_controlWindow;
     std::unique_ptr<LiveWindow>     m_liveWindow;
+    std::unique_ptr<TakeController> m_takeController;
 };
 
 } // namespace uwp

@@ -84,6 +84,13 @@ set(UWP_SOURCES
     src/player/LivePlayerPool.cpp
     src/player/SnapshotCache.h
     src/player/SnapshotCache.cpp
+    src/player/ImageWidget.h
+    src/player/ImageWidget.cpp
+
+    src/take/TransitionEffect.h
+    src/take/TransitionEffect.cpp
+    src/take/TakeController.h
+    src/take/TakeController.cpp
 
     src/scene/Layer.h
     src/scene/Layer.cpp

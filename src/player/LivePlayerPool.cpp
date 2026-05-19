@@ -139,6 +139,42 @@ bool LivePlayer::isPlaying() const {
     return d->playing;
 }
 
+bool LivePlayer::hasVideoOutput() const {
+#ifdef UWP_HAS_VLC
+    if (!d->player) return true;   // 플레이어 없으면 대기시키지 않음
+    return libvlc_media_player_has_vout(d->player) > 0;
+#else
+    return true;                   // stub: 파이프라인 정지 방지
+#endif
+}
+
+bool LivePlayer::isPrimed() const {
+#ifdef UWP_HAS_VLC
+    if (!d->player) return true;   // 스텁/플레이어 없음 → 대기시키지 않음
+    if (libvlc_media_player_has_vout(d->player) < 1) return false;
+    if (libvlc_media_player_get_state(d->player) != libvlc_Playing) return false;
+    // get_time()>0 == 실제로 첫 프레임을 표시하며 재생이 진행됨
+    return libvlc_media_player_get_time(d->player) > 0;
+#else
+    return true;
+#endif
+}
+
+void LivePlayer::freeze() {
+#ifdef UWP_HAS_VLC
+    if (d->player && libvlc_media_player_is_playing(d->player))
+        libvlc_media_player_set_pause(d->player, 1);   // 현재 프레임에서 정지
+#endif
+}
+
+void LivePlayer::resume() {
+#ifdef UWP_HAS_VLC
+    if (d->player)
+        libvlc_media_player_set_pause(d->player, 0);   // 재개
+#endif
+    d->playing = true;
+}
+
 // ============================================================
 // LivePlayerPool
 // ============================================================

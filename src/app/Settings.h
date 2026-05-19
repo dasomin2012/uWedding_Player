@@ -32,6 +32,7 @@ public:
 
     // ----- Take -----
     QString takeDefaultMode()    const { return m_takeDefaultMode; }
+    void    setTakeDefaultMode(const QString& m) { m_takeDefaultMode = m; }
     int     takeFadeDurationMs() const { return m_takeFadeDurationMs; }
 
     // ----- NovaStar -----

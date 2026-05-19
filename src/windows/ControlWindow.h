@@ -5,6 +5,7 @@
 class QLabel;
 class QWidget;
 class QPushButton;
+class QComboBox;
 
 namespace uwp {
 
@@ -38,6 +39,8 @@ signals:
     void playTestVideoRequested();
     void saveSceneRequested();
     void loadSceneRequested();
+    void takeRequested();
+    void takeModeChanged(const QString& mode);   // "cut" | "fade"
 
 private:
     void createMenus();
@@ -52,6 +55,7 @@ private:
     PropertyPanel*   m_property   = nullptr;
     QLabel*          m_liveMirror = nullptr;
     QPushButton*     m_takeButton = nullptr;
+    QComboBox*       m_takeMode   = nullptr;
     QPushButton*     m_programButtons[8] {};
 };
 

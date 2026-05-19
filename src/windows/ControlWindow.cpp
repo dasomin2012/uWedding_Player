@@ -8,6 +8,7 @@
 
 #include <QLabel>
 #include <QPushButton>
+#include <QComboBox>
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QGridLayout>
@@ -95,19 +96,32 @@ void ControlWindow::createCentralLayout() {
     // ----- 중앙 상단 좌: PreviewCanvas -----
     m_canvas = new PreviewCanvas(m_scene, m_snapshots);
 
-    // ----- 중앙 상단 가운데: Take (placeholder) -----
+    // ----- 중앙 상단 가운데: Take + Cut/Fade 선택 -----
     m_takeButton = new QPushButton("TAKE");
     m_takeButton->setMinimumSize(120, 120);
-    m_takeButton->setEnabled(false);  // Phase 4 에서 활성화
     m_takeButton->setStyleSheet(
         "QPushButton { font-size: 22px; font-weight: bold; "
         "background-color: #b22; color: white; border-radius: 6px; }"
-        "QPushButton:disabled { background-color: #533; color: #caa; }");
+        "QPushButton:pressed { background-color: #e33; }");
+    connect(m_takeButton, &QPushButton::clicked,
+            this, &ControlWindow::takeRequested);
+
+    m_takeMode = new QComboBox;
+    m_takeMode->addItems({ "cut", "fade" });
+    {
+        const QString dm = m_settings ? m_settings->takeDefaultMode().toLower()
+                                      : QString("fade");
+        m_takeMode->setCurrentText(dm == "cut" ? "cut" : "fade");
+    }
+    connect(m_takeMode, &QComboBox::currentTextChanged,
+            this, &ControlWindow::takeModeChanged);
+
     auto* takeContainer = new QWidget;
     auto* takeLayout    = new QVBoxLayout(takeContainer);
     takeLayout->setContentsMargins(6, 0, 6, 0);
     takeLayout->addStretch();
     takeLayout->addWidget(m_takeButton);
+    takeLayout->addWidget(m_takeMode);
     takeLayout->addStretch();
 
     // ----- 중앙 상단 우: Live Mirror (placeholder) -----
