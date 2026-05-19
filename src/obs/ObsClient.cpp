@@ -28,7 +28,10 @@ ObsClient::ObsClient(QObject* parent) : QObject(parent) {}
 
 ObsClient::~ObsClient() {
     if (m_sock) {
-        m_sock->abort();   // 콜백 없이 즉시 종료
+        // 소멸 중 disconnected→failAllPending 으로 파괴 직전 객체의
+        // 콜백이 호출되는 UAF 를 차단.
+        m_sock->blockSignals(true);
+        m_sock->abort();
     }
 }
 

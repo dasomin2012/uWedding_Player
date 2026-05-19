@@ -14,6 +14,10 @@ class LivePlayerPool;
 class SnapshotCache;
 class SceneModel;
 class TakeController;
+#if defined(UWP_HAS_OBS)
+class ObsProcessManager;
+class ObsLiveBackend;
+#endif
 
 // 두 윈도우(Control, Live)의 라이프타임과 Settings I/O 를 묶는 코디네이터.
 class Application : public QObject {
@@ -45,6 +49,12 @@ private:
     std::unique_ptr<SceneModel>     m_scene;
     std::unique_ptr<ControlWindow>  m_controlWindow;
     std::unique_ptr<LiveWindow>     m_liveWindow;
+#if defined(UWP_HAS_OBS)
+    // 선언 순서 주의: backend 를 proc 보다 먼저 선언 → proc 가 먼저 소멸
+    // (proc 소멸 시 OBS 종료·ObsClient abort, 이때 backend 는 아직 생존).
+    std::unique_ptr<ObsLiveBackend>    m_obsBackend;
+    std::unique_ptr<ObsProcessManager> m_obsProc;
+#endif
     std::unique_ptr<TakeController> m_takeController;
 };
 

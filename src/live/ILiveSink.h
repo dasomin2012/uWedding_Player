@@ -19,6 +19,10 @@ public:
     virtual void setCanvasSize(int width, int height) = 0;
     virtual void showOnMonitor(int monitorIndex) = 0;
 
+    // 다음 applyScene 에 적용할 전환 의도. 위젯 백엔드는 무시(Qt
+    // TransitionEffect 가 처리)하고, OBS 백엔드는 Studio Mode 전환에 사용.
+    virtual void setTransition(bool /*fade*/, int /*fadeDurationMs*/) {}
+
     // 씬을 스테이징 → 원자적 commit. commit 완료 시 onCommitted 호출.
     virtual void applyScene(const QVector<Layer>& layers,
                             std::function<void()> onCommitted = {}) = 0;

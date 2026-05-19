@@ -82,6 +82,8 @@ if(Qt5WebSockets_FOUND)
         src/obs/ObsClient.cpp
         src/obs/ObsProcessManager.h
         src/obs/ObsProcessManager.cpp
+        src/obs/ObsLiveBackend.h
+        src/obs/ObsLiveBackend.cpp
     )
     message(STATUS "Qt5::WebSockets found — OBS backend buildable")
     if(EXISTS "${OBS_ROOT}/bin/64bit/obs64.exe")

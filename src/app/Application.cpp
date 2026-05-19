@@ -11,6 +11,7 @@
 #if defined(UWP_HAS_OBS)
 #include "obs/ObsClient.h"
 #include "obs/ObsProcessManager.h"
+#include "obs/ObsLiveBackend.h"
 #include <QJsonObject>
 #include <QMetaEnum>
 #endif
@@ -92,9 +93,39 @@ bool Application::initialize() {
     connect(m_controlWindow.get(), &ControlWindow::loadSceneRequested,
             this, &Application::onLoadSceneRequested);
 
+    // ----- 송출 백엔드 선택 (engine: qt | obs) -----
+    ILiveSink* sink   = m_liveWindow.get();
+    bool       useObs = false;
+#if defined(UWP_HAS_OBS)
+    useObs = (m_settings.engine().compare(QLatin1String("obs"),
+                                          Qt::CaseInsensitive) == 0);
+    if (useObs) {
+        m_obsProc    = std::make_unique<ObsProcessManager>(m_settings.obs());
+        m_obsBackend = std::make_unique<ObsLiveBackend>(
+            m_obsProc.get(), m_settings.obs());
+        m_obsBackend->setCanvasSize(m_settings.canvasWidth(),
+                                    m_settings.canvasHeight());
+        connect(m_obsProc.get(), &ObsProcessManager::stateChanged, this,
+                [](ObsProcessManager::State s) {
+                    qInfo() << "ObsProcessManager state ="
+                            << QMetaEnum::fromType<ObsProcessManager::State>()
+                                   .valueToKey(static_cast<int>(s));
+                });
+        connect(m_obsProc.get(), &ObsProcessManager::failed, this,
+                [this](const QString& r) {
+                    qCritical() << "OBS failed:" << r;
+                    m_controlWindow->setStatusText(
+                        tr("OBS failed: %1").arg(r));
+                });
+        sink = m_obsBackend.get();
+        qInfo() << "engine=obs — launching managed OBS";
+        m_obsProc->start();
+    }
+#endif
+
     // ----- Take (Preview SceneModel -> Live) -----
     m_takeController = std::make_unique<TakeController>(
-        m_scene.get(), m_liveWindow.get(), &m_settings);
+        m_scene.get(), sink, &m_settings);
     connect(m_controlWindow.get(), &ControlWindow::takeRequested,
             m_takeController.get(), &TakeController::take);
     connect(m_controlWindow.get(), &ControlWindow::takeModeChanged,
@@ -121,17 +152,24 @@ bool Application::initialize() {
 
     // ----- 표시 -----
     m_controlWindow->show();
-    m_liveWindow->showOnMonitor(m_settings.outputMonitorIndex());
-
-    // ----- Phase 1: 테스트 영상 자동 재생 -----
-    const QString videoPath = m_settings.testVideoPath();
-    if (videoPath.isEmpty()) {
-        qInfo() << "settings.test_video_path is empty — Live window stays black. "
-                   "Set it in" << m_settingsPath;
-    } else if (!QFileInfo::exists(videoPath)) {
-        qWarning() << "test_video_path does not exist:" << videoPath;
+    if (!useObs) {
+        m_liveWindow->showOnMonitor(m_settings.outputMonitorIndex());
     } else {
-        m_liveWindow->playVideo(videoPath);     // Live: 실제 재생 (편집과 독립)
+        qInfo() << "engine=obs — Live output via OBS projector "
+                   "(LiveWindow hidden)";
+    }
+
+    // ----- Phase 1: 테스트 영상 자동 재생 (qt 백엔드 전용) -----
+    if (!useObs) {
+        const QString videoPath = m_settings.testVideoPath();
+        if (videoPath.isEmpty()) {
+            qInfo() << "settings.test_video_path is empty — Live window "
+                       "stays black. Set it in" << m_settingsPath;
+        } else if (!QFileInfo::exists(videoPath)) {
+            qWarning() << "test_video_path does not exist:" << videoPath;
+        } else {
+            m_liveWindow->playVideo(videoPath);  // Live: 실제 재생 (편집과 독립)
+        }
     }
 
     // 검증/자동화 훅: UWP_AUTOTAKE=1 이면 시작 후 자동으로 Take 1회.
@@ -168,24 +206,8 @@ bool Application::initialize() {
         qInfo() << "UWP_OBS_PING enabled — connecting to" << cfg.wsUrl;
         obs->connectToObs(cfg.wsUrl, cfg.wsPassword);
     }
-
-    // O3: UWP_OBS_START=1 이면 OBS 프로세스 수명 관리 시작(숨김 기동 +
-    // 프로젝터 + 크래시 자동복구). Take 는 여전히 qt — O4 에서 전환.
-    if (qEnvironmentVariableIntValue("UWP_OBS_START") > 0) {
-        auto* mgr = new ObsProcessManager(m_settings.obs(), this);
-        connect(mgr, &ObsProcessManager::stateChanged, this,
-                [](ObsProcessManager::State s) {
-                    qInfo() << "ObsProcessManager state ="
-                            << QMetaEnum::fromType<ObsProcessManager::State>()
-                                   .valueToKey(static_cast<int>(s));
-                });
-        connect(mgr, &ObsProcessManager::ready, this,
-                []() { qInfo() << "OBS ready (hidden, projector up)"; });
-        connect(mgr, &ObsProcessManager::failed, this,
-                [](const QString& r) { qWarning() << "OBS failed:" << r; });
-        qInfo() << "UWP_OBS_START enabled — launching managed OBS";
-        mgr->start();
-    }
+    // 관리형 OBS 수명/송출은 engine=obs 경로(위)에서 처리. UWP_OBS_START
+    // 단독 훅은 O4 에서 정식 경로로 대체되어 제거됨.
 #endif
 
     return true;

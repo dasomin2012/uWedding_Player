@@ -41,6 +41,9 @@ void TakeController::take() {
             << (m_mode == TransitionEffect::Mode::Cut ? "cut" : "fade")
             << "layers=" << snapshot.size();
 
+    // OBS 백엔드용 전환 의도 전달(위젯 백엔드는 no-op).
+    m_live->setTransition(m_mode == TransitionEffect::Mode::Fade, durationMs);
+
     ILiveSink* live = m_live;
     m_transition.run(
         m_mode,
