@@ -7,7 +7,7 @@
 namespace uwp {
 
 class SceneModel;
-class LiveWindow;
+class ILiveSink;
 class Settings;
 
 // Preview SceneModel 을 Live 로 commit 하는 주체.
@@ -16,7 +16,7 @@ class Settings;
 class TakeController : public QObject {
     Q_OBJECT
 public:
-    TakeController(SceneModel* scene, LiveWindow* live, Settings* settings,
+    TakeController(SceneModel* scene, ILiveSink* live, Settings* settings,
                    QObject* parent = nullptr);
 
     TransitionEffect::Mode mode() const { return m_mode; }
@@ -31,7 +31,7 @@ signals:
 
 private:
     SceneModel*            m_scene = nullptr;
-    LiveWindow*            m_live  = nullptr;
+    ILiveSink*             m_live  = nullptr;
     Settings*              m_settings = nullptr;
     TransitionEffect::Mode m_mode  = TransitionEffect::Mode::Fade;
     TransitionEffect       m_transition;

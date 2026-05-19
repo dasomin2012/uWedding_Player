@@ -2,7 +2,7 @@
 
 #include "scene/SceneModel.h"
 #include "scene/Layer.h"
-#include "windows/LiveWindow.h"
+#include "live/ILiveSink.h"
 #include "app/Settings.h"
 
 #include <QVector>
@@ -10,7 +10,7 @@
 
 namespace uwp {
 
-TakeController::TakeController(SceneModel* scene, LiveWindow* live,
+TakeController::TakeController(SceneModel* scene, ILiveSink* live,
                               Settings* settings, QObject* parent)
     : QObject(parent)
     , m_scene(scene)
@@ -41,11 +41,11 @@ void TakeController::take() {
             << (m_mode == TransitionEffect::Mode::Cut ? "cut" : "fade")
             << "layers=" << snapshot.size();
 
-    LiveWindow* live = m_live;
+    ILiveSink* live = m_live;
     m_transition.run(
         m_mode,
         (m_mode == TransitionEffect::Mode::Fade) ? durationMs : 0,
-        live,
+        live->transitionAnchor(),
         [live, snapshot](std::function<void()> done) {
             live->applyScene(snapshot, std::move(done));
         });

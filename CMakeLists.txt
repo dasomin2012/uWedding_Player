@@ -87,6 +87,8 @@ set(UWP_SOURCES
     src/player/ImageWidget.h
     src/player/ImageWidget.cpp
 
+    src/live/ILiveSink.h
+
     src/take/TransitionEffect.h
     src/take/TransitionEffect.cpp
     src/take/TakeController.h

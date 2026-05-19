@@ -6,6 +6,7 @@
 #include <functional>
 
 #include "scene/Layer.h"
+#include "live/ILiveSink.h"
 
 class QTimer;
 
@@ -21,18 +22,20 @@ class LivePlayerPool;
 // 첫 프레임(has_vout)을 낼 때까지(타임아웃 보호) 대기 → 한 턴에 옛 씬
 // 삭제 + 새 씬 전면화. 한 개씩 튀어나오는 현상 제거(진짜 Cut).
 // onCommitted 콜백으로 전환효과(Fade)와 동기.
-class LiveWindow : public QWidget {
+class LiveWindow : public QWidget, public ILiveSink {
     Q_OBJECT
 public:
     explicit LiveWindow(LivePlayerPool* pool, QWidget* parent = nullptr);
     ~LiveWindow() override;
 
-    void setCanvasSize(int width, int height);
-    void showOnMonitor(int monitorIndex);
+    void setCanvasSize(int width, int height) override;
+    void showOnMonitor(int monitorIndex) override;
 
     // 씬을 스테이징→준비대기→원자적 commit. commit 완료 시 onCommitted 호출.
     void applyScene(const QVector<Layer>& layers,
-                    std::function<void()> onCommitted = {});
+                    std::function<void()> onCommitted = {}) override;
+
+    QWidget* transitionAnchor() override { return this; }
 
     bool playVideo(const QString& path);   // 단일 전체화면 영상 레이어
     void stopVideo();
