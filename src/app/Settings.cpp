@@ -51,6 +51,16 @@ bool Settings::load(const QString& path) {
     m_novaStar.port          = nova.value("port").toInt(m_novaStar.port);
     m_novaStar.protocol      = nova.value("protocol").toString(m_novaStar.protocol);
 
+    m_engine                 = s.value("engine").toString(m_engine);
+
+    const QJsonObject obs    = s.value("obs").toObject();
+    m_obs.exePath            = obs.value("exe_path").toString(m_obs.exePath);
+    m_obs.wsUrl              = obs.value("ws_url").toString(m_obs.wsUrl);
+    m_obs.wsPassword         = obs.value("ws_password").toString(m_obs.wsPassword);
+    m_obs.sceneA             = obs.value("scene_a").toString(m_obs.sceneA);
+    m_obs.sceneB             = obs.value("scene_b").toString(m_obs.sceneB);
+    m_obs.projectorMonitor   = obs.value("projector_monitor").toInt(m_obs.projectorMonitor);
+
     return true;
 }
 
@@ -65,6 +75,14 @@ bool Settings::save(const QString& path) const {
     nova["port"]     = m_novaStar.port;
     nova["protocol"] = m_novaStar.protocol;
 
+    QJsonObject obs;
+    obs["exe_path"]          = m_obs.exePath;
+    obs["ws_url"]            = m_obs.wsUrl;
+    obs["ws_password"]       = m_obs.wsPassword;
+    obs["scene_a"]           = m_obs.sceneA;
+    obs["scene_b"]           = m_obs.sceneB;
+    obs["projector_monitor"] = m_obs.projectorMonitor;
+
     QJsonObject s;
     s["canvas"]                  = canvas;
     s["output_monitor_index"]    = m_outputMonitorIndex;
@@ -77,6 +95,8 @@ bool Settings::save(const QString& path) const {
     s["media_dir"]               = m_mediaDir;
     s["scene_scratch"]           = m_sceneScratch;
     s["novastar"]                = nova;
+    s["engine"]                  = m_engine;
+    s["obs"]                     = obs;
 
     QJsonObject root;
     root["version"]  = m_version;

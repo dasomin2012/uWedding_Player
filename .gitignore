@@ -36,6 +36,9 @@ ui_*.h
 # Third-party (대용량)
 third_party/libvlc/
 third_party/ffmpeg/
+# 포터블 OBS 런타임은 대용량 → 내용물 제외, 배치 안내 README 만 추적
+third_party/obs/*
+!third_party/obs/README.md
 
 # Python venv (현재 가상환경)
 .venv/

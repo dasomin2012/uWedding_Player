@@ -40,6 +40,9 @@ endif()
 
 find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets)
 
+# obs-websocket 클라이언트용 (선택). 없으면 OBS 백엔드가 비활성화됨.
+find_package(Qt5 5.15 QUIET COMPONENTS WebSockets)
+
 # ------------------------------------------------------------------
 # libVLC (선택)
 #   third_party/libvlc/sdk/include/vlc/vlc.h 및
@@ -58,6 +61,34 @@ else()
         "libVLC SDK not found at ${LIBVLC_ROOT}/sdk. "
         "VideoWidget will be built as a stub (no playback). "
         "Place vlc-3.0.x-win64.7z contents into third_party/libvlc/ to enable video.")
+endif()
+
+# ------------------------------------------------------------------
+# OBS 백엔드 (선택, GPL 격리)
+#   - Qt5::WebSockets 가 있어야 obs-websocket 클라이언트 빌드 가능.
+#   - libobs 는 절대 링크하지 않음 (별도 프로세스 + 네트워크 프로토콜만).
+#   - third_party/obs/ 에 포터블 OBS 런타임 배치 (gitignore; README 참고).
+#     수백 MB 트리이므로 매 빌드 복사하지 않고, ObsProcessManager(O3)가
+#     Settings.obs().exePath 또는 이 경로를 런타임에 해석한다.
+# ------------------------------------------------------------------
+set(OBS_ROOT "${CMAKE_SOURCE_DIR}/third_party/obs")
+set(UWP_HAS_OBS OFF)
+set(UWP_OBS_SOURCES)   # O2+ 에서 src/obs/*.{h,cpp} 가 추가됨
+
+if(Qt5WebSockets_FOUND)
+    set(UWP_HAS_OBS ON)
+    message(STATUS "Qt5::WebSockets found — OBS backend buildable")
+    if(EXISTS "${OBS_ROOT}/bin/64bit/obs64.exe")
+        message(STATUS "Portable OBS found at ${OBS_ROOT}")
+    else()
+        message(STATUS
+            "Portable OBS not at ${OBS_ROOT}/bin/64bit/obs64.exe — "
+            "engine=obs needs it at runtime (see third_party/obs/README.md)")
+    endif()
+else()
+    message(WARNING
+        "Qt5::WebSockets not found — OBS backend disabled (engine=obs unavailable). "
+        "Install the Qt WebSockets module to enable.")
 endif()
 
 # ------------------------------------------------------------------
@@ -113,7 +144,7 @@ set(UWP_SOURCES
 
 # Phase 1 에서는 console subsystem 으로 빌드하여 qDebug 출력을 보기 쉽게 한다.
 # 배포 시점에는 add_executable(... WIN32 ...) 로 전환.
-add_executable(uWeddingPlayer ${UWP_SOURCES})
+add_executable(uWeddingPlayer ${UWP_SOURCES} ${UWP_OBS_SOURCES})
 
 target_include_directories(uWeddingPlayer PRIVATE src)
 target_link_libraries(uWeddingPlayer PRIVATE
@@ -149,6 +180,11 @@ if(UWP_HAS_VLC)
     else()
         message(WARNING "vlc-cache-gen.exe not found — libVLC startup will be slow")
     endif()
+endif()
+
+if(UWP_HAS_OBS)
+    target_compile_definitions(uWeddingPlayer PRIVATE UWP_HAS_OBS=1)
+    target_link_libraries(uWeddingPlayer PRIVATE Qt5::WebSockets)
 endif()
 
 # ------------------------------------------------------------------

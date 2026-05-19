@@ -12,6 +12,17 @@ struct NovaStarConfig {
     QString protocol = "udp";
 };
 
+// 송출 백엔드가 OBS 일 때만 사용. obs-websocket(네트워크 프로토콜)으로만
+// 제어 — libobs 를 링크하지 않으므로 GPL 전염 없음.
+struct ObsConfig {
+    QString exePath;                          // 포터블 obs64.exe (비어있으면 third_party/obs 자동 탐지)
+    QString wsUrl            = "ws://127.0.0.1:4455";
+    QString wsPassword;                       // obs-websocket 인증 (없으면 빈 문자열)
+    QString sceneA           = "UWP_PGM_A";   // Studio Mode 핑퐁 씬 A
+    QString sceneB           = "UWP_PGM_B";   // Studio Mode 핑퐁 씬 B
+    int     projectorMonitor = 1;             // 풀스크린 프로젝터 모니터 인덱스
+};
+
 // Phase 1: data/settings.json 파일 I/O.
 // 스키마는 CLAUDE.md의 setup.json 형식을 따른다.
 class Settings {
@@ -38,6 +49,13 @@ public:
     // ----- NovaStar -----
     const NovaStarConfig& novaStar() const { return m_novaStar; }
 
+    // ----- 송출 백엔드 (O1+) -----
+    // "qt"  = LiveWindow/libVLC (기본, 동작 무변경)
+    // "obs" = ObsLiveBackend (obs-websocket, O4+ 에서 활성)
+    QString             engine() const { return m_engine; }
+    void                setEngine(const QString& e) { m_engine = e; }
+    const ObsConfig&    obs()    const { return m_obs; }
+
     // ----- Snapshot / FFmpeg (Phase 2) -----
     // 비어있으면 third_party/ffmpeg → PATH 순으로 자동 탐지.
     QString ffmpegPath()       const { return m_ffmpegPath; }
@@ -63,6 +81,8 @@ private:
     QString m_takeDefaultMode     = "fade";  // cut | fade
     int     m_takeFadeDurationMs  = 800;
     NovaStarConfig m_novaStar;
+    QString        m_engine       = "qt";    // qt | obs
+    ObsConfig      m_obs;
     QString m_testVideoPath       = "data/sample.mp4";  // 비어있으면 Live 검은 화면 유지
     QString m_ffmpegPath;                               // 비어있으면 자동 탐지
     QString m_snapshotCacheDir    = "data/cache";
