@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(dir D:\\\\PycharmProjects\\\\uWeddingPlayer)",
-      "PowerShell($vsWhere = \"${env:ProgramFiles\\(x86\\)}\\\\Microsoft Visual Studio\\\\Installer\\\\vswhere.exe\"; if \\(Test-Path $vsWhere\\) { & $vsWhere -all -property installationPath } else { Write-Output \"vswhere not found - Visual Studio likely not installed\" })"
-    ]
-  }
-}
