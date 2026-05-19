@@ -55,3 +55,11 @@ desktop.ini
 data/programs/thumbs/
 data/programs/cache/
 *.log
+
+# Test media (대용량, 소스 아님 — 버전관리 제외)
+data/*.mp4
+data/*.mov
+data/*.avi
+data/*.mkv
+data/*.wmv
+data/sample.mp4
