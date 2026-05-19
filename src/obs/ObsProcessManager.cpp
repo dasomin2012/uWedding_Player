@@ -257,6 +257,12 @@ BOOL CALLBACK hideEnumProc(HWND h, LPARAM lp) {
 #endif
 
 void ObsProcessManager::hideObsMainWindow() {
+    // 디버그: UWP_OBS_NOHIDE=1 이면 OBS 메인창을 숨기지 않음
+    // (소스/씬/재생 상태를 OBS UI 에서 직접 확인용).
+    if (qEnvironmentVariableIntValue("UWP_OBS_NOHIDE") > 0) {
+        qInfo() << "ObsProcessManager: UWP_OBS_NOHIDE — OBS 창 숨김 생략";
+        return;
+    }
 #ifdef _WIN32
     // 창이 아직 안 떴을 수 있어 몇 번 재시도.
     static constexpr int kMaxTries = 6;

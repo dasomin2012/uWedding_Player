@@ -4,7 +4,12 @@
 #include "ObsProcessManager.h"
 
 #include <QJsonArray>
+#include <QDir>
+#include <QFileInfo>
+#include <QCoreApplication>
 #include <QDebug>
+
+#include <memory>
 
 namespace uwp {
 
@@ -105,13 +110,81 @@ void ObsLiveBackend::seed() {
                             QJsonObject cs; cs["sceneName"] = s;
                             c3->request(QStringLiteral("CreateScene"), cs, {});
                         }
-                    QJsonObject sm; sm["studioModeEnabled"] = true;
+                    // Studio Mode 비활성 — program 을 SetCurrentProgramScene
+                    // 으로 직접 ping-pong 전환(전환은 활성 scene transition).
+                    QJsonObject sm; sm["studioModeEnabled"] = false;
                     c3->request(QStringLiteral("SetStudioModeEnabled"), sm,
                         [this](bool, const QJsonObject&, const QString&) {
-                            m_seeded = true;
-                            qInfo() << "ObsLiveBackend: seeded "
-                                       "(canvas/scenes/studio-mode)";
-                            if (m_havePending) doApply();
+                            ObsClient* ct = client();
+                            if (!ct) return;
+                            // 전환을 kind 로 탐색(로케일 무관). cut/fade 의
+                            // 표시이름을 저장해 둔다.
+                            ct->request(
+                                QStringLiteral("GetSceneTransitionList"), {},
+                                [this](bool, const QJsonObject& dt,
+                                       const QString&) {
+                            for (const QJsonValue& v :
+                                 dt.value("transitions").toArray()) {
+                                const QJsonObject t = v.toObject();
+                                const QString k =
+                                    t.value("transitionKind").toString();
+                                const QString n =
+                                    t.value("transitionName").toString();
+                                if (k == QLatin1String("cut_transition")
+                                    && m_cutName.isEmpty())
+                                    m_cutName = n;
+                                if (k == QLatin1String("fade_transition")
+                                    && m_fadeName.isEmpty())
+                                    m_fadeName = n;
+                            }
+                            qInfo() << "ObsLiveBackend: transitions cut="
+                                    << m_cutName << "fade=" << m_fadeName;
+                            // 이전 세션/크래시가 포터블 config 에 남긴 uwp_*
+                            // 입력을 일괄 제거 → 결정적 이름 충돌 원천 차단.
+                            ObsClient* c4 = client();
+                            auto finish = [this]() {
+                                m_inputsByScene.clear();
+                                m_seeded = true;
+                                qInfo() << "ObsLiveBackend: seeded "
+                                           "(canvas/scenes/transitions, "
+                                           "stale purged)";
+                                if (m_havePending) doApply();
+                            };
+                            if (!c4) { finish(); return; }
+                            c4->request(QStringLiteral("GetInputList"), {},
+                                [this, finish](bool, const QJsonObject& d,
+                                               const QString&) {
+                                    ObsClient* c5 = client();
+                                    QStringList stale;
+                                    for (const QJsonValue& v :
+                                         d.value("inputs").toArray()) {
+                                        const QString n = v.toObject()
+                                            .value("inputName").toString();
+                                        if (n.startsWith(
+                                                QLatin1String("uwp_")))
+                                            stale << n;
+                                    }
+                                    if (!c5 || stale.isEmpty()) {
+                                        finish();
+                                        return;
+                                    }
+                                    qInfo() << "ObsLiveBackend: purging"
+                                            << stale.size()
+                                            << "stale uwp_ input(s)";
+                                    auto left =
+                                        std::make_shared<int>(stale.size());
+                                    for (const QString& n : stale) {
+                                        QJsonObject rm; rm["inputName"] = n;
+                                        c5->request(
+                                            QStringLiteral("RemoveInput"), rm,
+                                            [left, finish]
+                                            (bool, const QJsonObject&,
+                                             const QString&) {
+                                                if (--(*left) == 0) finish();
+                                            });
+                                    }
+                                });
+                                });   // GetSceneTransitionList
                         });
                 });
         });
@@ -168,18 +241,28 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
         buildLayer(scene, layers, i + 1, done);
     };
 
+    // OBS 는 별도 프로세스(작업 디렉터리 = OBS bin) 이므로 상대경로를
+    // 앱 디렉터리 기준 절대경로로 변환해 넘겨야 한다(qt 경로와 동일 기준).
+    QString mediaPath = L.media;
+    if (QDir::isRelativePath(mediaPath))
+        mediaPath = QDir(QCoreApplication::applicationDirPath())
+                        .absoluteFilePath(mediaPath);
+    if (!QFileInfo::exists(mediaPath))
+        qWarning() << "ObsLiveBackend: media not found —" << mediaPath
+                   << "(layer" << L.id << ")";
+
     QString kind;
     QJsonObject settings;
     if (L.mediaType == MediaType::Video) {
         kind = QStringLiteral("ffmpeg_source");
-        settings["local_file"]          = L.media;
+        settings["local_file"]          = mediaPath;
         settings["is_local_file"]       = true;
         settings["looping"]             = (L.endAction == EndAction::Loop);
         settings["restart_on_activate"] = true;
-        settings["hw_decode"]           = true;
+        settings["hw_decode"]           = false;  // HW 디코드 실패 시 검은 화면 방지(우선 SW)
     } else if (L.mediaType == MediaType::Image) {
         kind = QStringLiteral("image_source");
-        settings["file"] = L.media;
+        settings["file"] = mediaPath;
     } else {
         qWarning() << "ObsLiveBackend: skipping unsupported layer"
                    << L.id << "(type" << static_cast<int>(L.mediaType)
@@ -188,9 +271,15 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
         return;
     }
 
+    // 세션 단조 카운터로 매 생성마다 유니크한 이름 → "already exists"
+    // 가 구조적으로 불가능. 세대 추적은 m_inputsByScene 으로, 이전 세대
+    // 정리는 rebuildScene 이, 세션 간 잔존은 seed purge 가 담당.
     const QString inputName =
-        QStringLiteral("uwp_%1_%2").arg(scene, L.id);
+        QStringLiteral("uwp_%1").arg(++m_inputSeq);
     m_inputsByScene[scene] << inputName;
+
+    qInfo() << "ObsLiveBackend: layer" << L.id << "→ input" << inputName
+            << kind << "geom" << L.geometry << "file=" << mediaPath;
 
     QJsonObject ci;
     ci["sceneName"]        = scene;
@@ -205,7 +294,7 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
             ObsClient* c2 = client();
             if (!ok || !c2) {
                 qWarning() << "ObsLiveBackend: CreateInput failed for"
-                           << L.id << "—" << cm;
+                           << L.id << "input" << inputName << "—" << cm;
                 next();
                 return;
             }
@@ -260,42 +349,60 @@ void ObsLiveBackend::triggerTransition(const QString& targetScene) {
     ObsClient* c = client();
     if (!c) return;
 
-    QJsonObject tn;
-    tn["transitionName"] = m_fade ? QStringLiteral("Fade")
-                                  : QStringLiteral("Cut");
+    // 활성 scene transition 을 (kind 로 찾아둔) cut/fade 표시이름으로 설정 →
+    // SetCurrentProgramScene 이 그 전환으로 program 을 target 으로 바꾼다.
+    // Studio Mode/TriggerStudioModeTransition 의존 제거(이 환경서 어긋남).
+    const QString tname = m_fade ? m_fadeName : m_cutName;
+
+    auto applyProgram = [this, targetScene]() {
+        ObsClient* cp = client();
+        if (!cp) return;
+        m_inFlightCommit = m_pendingCommit;
+        m_programScene   = targetScene;
+        QJsonObject ps; ps["sceneName"] = targetScene;
+        cp->request(QStringLiteral("SetCurrentProgramScene"), ps,
+            [this, targetScene](bool ok, const QJsonObject&,
+                                const QString& cm) {
+                if (!ok)
+                    qWarning() << "ObsLiveBackend: SetCurrentProgramScene "
+                                  "failed —" << cm;
+                ObsClient* cg = client();
+                if (cg)
+                    cg->request(QStringLiteral("GetCurrentProgramScene"), {},
+                        [targetScene](bool, const QJsonObject& d,
+                                      const QString&) {
+                            qInfo() << "ObsLiveBackend: program scene now ="
+                                    << d.value("sceneName").toString()
+                                    << d.value("currentProgramSceneName")
+                                           .toString()
+                                    << "(target" << targetScene << ")";
+                        });
+            });
+        qInfo() << "ObsLiveBackend: transition →" << targetScene
+                << (m_fade ? "(fade)" : "(cut)");
+    };
+
+    if (tname.isEmpty()) {       // 전환 못 찾음 → 전환 없이 즉시 전환
+        applyProgram();
+        return;
+    }
+    QJsonObject tn; tn["transitionName"] = tname;
     c->request(QStringLiteral("SetCurrentSceneTransition"), tn,
-        [this, targetScene](bool, const QJsonObject&, const QString&) {
+        [this, applyProgram](bool ok, const QJsonObject&,
+                             const QString& cm) {
+            if (!ok)
+                qWarning() << "ObsLiveBackend: SetCurrentSceneTransition "
+                              "failed —" << cm;
             ObsClient* c2 = client();
-            if (!c2) return;
-            auto afterDur = [this, targetScene]() {
-                ObsClient* c3 = client();
-                if (!c3) return;
-                QJsonObject ps; ps["sceneName"] = targetScene;
-                c3->request(QStringLiteral("SetCurrentPreviewScene"), ps,
-                    [this, targetScene](bool, const QJsonObject&,
-                                        const QString&) {
-                        ObsClient* c4 = client();
-                        if (!c4) return;
-                        m_inFlightCommit = m_pendingCommit;
-                        m_programScene   = targetScene;
-                        c4->request(
-                            QStringLiteral("TriggerStudioModeTransition"),
-                            {}, {});
-                        qInfo() << "ObsLiveBackend: transition →"
-                                << targetScene
-                                << (m_fade ? "(fade)" : "(cut)");
-                    });
-            };
+            if (!c2) { applyProgram(); return; }
             if (m_fade) {
-                QJsonObject td;
-                td["transitionDuration"] = m_fadeMs;
+                QJsonObject td; td["transitionDuration"] = m_fadeMs;
                 c2->request(
                     QStringLiteral("SetCurrentSceneTransitionDuration"), td,
-                    [afterDur](bool, const QJsonObject&, const QString&) {
-                        afterDur();
-                    });
+                    [applyProgram](bool, const QJsonObject&,
+                                   const QString&) { applyProgram(); });
             } else {
-                afterDur();
+                applyProgram();
             }
         });
 }

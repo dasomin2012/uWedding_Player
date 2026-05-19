@@ -69,8 +69,11 @@ private:
 
     QString m_sceneA;
     QString m_sceneB;
+    QString m_cutName;     // 로케일별 Cut 전환 표시이름 (kind 로 탐색)
+    QString m_fadeName;    // 로케일별 Fade 전환 표시이름
     QString m_programScene;                        // 현재 송출 씬 ("" = 미정)
     QHash<QString, QStringList> m_inputsByScene;   // 우리가 만든 input 추적
+    quint64 m_inputSeq = 0;                        // 세션 유니크 input 이름용
 
     bool                  m_havePending = false;
     QVector<Layer>        m_pendingLayers;

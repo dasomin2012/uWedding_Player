@@ -16,16 +16,16 @@
 
 | 항목 | 고정 값 |
 |---|---|
-| OBS Studio | **30.2.3 (64-bit, Windows)** — obs-websocket v5 번들 (OBS ≥ 28) |
-| obs-websocket | v5 (OBS 내장, 별도 설치 불필요) |
-| 프로토콜 | obs-websocket **5.x** (RPC 버전 1) |
+| OBS Studio | **32.1.2 (64-bit, Windows)** — 실송출 검증 완료(O2~O4). OBS ≥ 28 이면 호환 |
+| obs-websocket | **5.7.3** (OBS 내장, 별도 설치 불필요) |
+| 프로토콜 | obs-websocket 5.x (협상 RPC 버전 1) |
 
 버전을 올릴 때는 `ObsClient`(O2) 핸드셰이크와 창 숨김 로직(O3)을 재검증한 뒤
 이 표를 갱신한다. 버전 불일치는 무음 실패의 주원인.
 
 ## 배치 절차
 
-1. OBS Studio 30.2.3 Windows zip(또는 설치본)을 받아 이 디렉터리에 푼다.
+1. OBS Studio 32.1.2 Windows zip(또는 설치본)을 받아 이 디렉터리에 푼다.
    최종적으로 다음이 존재해야 한다:
 
    ```
