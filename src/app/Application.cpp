@@ -8,6 +8,11 @@
 #include "scene/SceneSerializer.h"
 #include "take/TakeController.h"
 
+#if defined(UWP_HAS_OBS)
+#include "obs/ObsClient.h"
+#include <QJsonObject>
+#endif
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -132,6 +137,36 @@ bool Application::initialize() {
         QTimer::singleShot(1500, m_takeController.get(), &TakeController::take);
         qInfo() << "UWP_AUTOTAKE enabled — auto Take in 1500ms";
     }
+
+#if defined(UWP_HAS_OBS)
+    // O2 PoC: UWP_OBS_PING=1 이면 (수동 기동한) OBS 에 obs-websocket 으로
+    // 접속해 GetVersion 1회 호출·로깅. O3/O4 에서 정식 경로로 대체된다.
+    if (qEnvironmentVariableIntValue("UWP_OBS_PING") > 0) {
+        const auto cfg = m_settings.obs();
+        auto* obs = new ObsClient(this);   // QObject 부모 소유 → 앱 수명 동안 생존
+        connect(obs, &ObsClient::ready, this, [obs]() {
+            qInfo() << "ObsClient: identified — sending GetVersion";
+            obs->request(QStringLiteral("GetVersion"), {},
+                [](bool ok, const QJsonObject& d, const QString& c) {
+                    if (ok)
+                        qInfo() << "OBS GetVersion OK — obsVersion="
+                                << d.value("obsVersion").toString()
+                                << "obsWebSocketVersion="
+                                << d.value("obsWebSocketVersion").toString();
+                    else
+                        qWarning() << "OBS GetVersion failed:" << c;
+                });
+        });
+        connect(obs, &ObsClient::socketError, this, [](const QString& m) {
+            qWarning() << "ObsClient socket error:" << m;
+        });
+        connect(obs, &ObsClient::closed, this, []() {
+            qInfo() << "ObsClient: connection closed";
+        });
+        qInfo() << "UWP_OBS_PING enabled — connecting to" << cfg.wsUrl;
+        obs->connectToObs(cfg.wsUrl, cfg.wsPassword);
+    }
+#endif
 
     return true;
 }

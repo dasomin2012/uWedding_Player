@@ -77,6 +77,10 @@ set(UWP_OBS_SOURCES)   # O2+ 에서 src/obs/*.{h,cpp} 가 추가됨
 
 if(Qt5WebSockets_FOUND)
     set(UWP_HAS_OBS ON)
+    set(UWP_OBS_SOURCES
+        src/obs/ObsClient.h
+        src/obs/ObsClient.cpp
+    )
     message(STATUS "Qt5::WebSockets found — OBS backend buildable")
     if(EXISTS "${OBS_ROOT}/bin/64bit/obs64.exe")
         message(STATUS "Portable OBS found at ${OBS_ROOT}")
