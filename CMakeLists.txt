@@ -80,6 +80,8 @@ if(Qt5WebSockets_FOUND)
     set(UWP_OBS_SOURCES
         src/obs/ObsClient.h
         src/obs/ObsClient.cpp
+        src/obs/ObsProcessManager.h
+        src/obs/ObsProcessManager.cpp
     )
     message(STATUS "Qt5::WebSockets found — OBS backend buildable")
     if(EXISTS "${OBS_ROOT}/bin/64bit/obs64.exe")
@@ -188,6 +190,9 @@ endif()
 
 if(UWP_HAS_OBS)
     target_compile_definitions(uWeddingPlayer PRIVATE UWP_HAS_OBS=1)
+    # 개발 빌드(build/Release 실행)에서 포터블 OBS 트리 폴백 경로.
+    target_compile_definitions(uWeddingPlayer PRIVATE
+        UWP_OBS_DEV_ROOT="${OBS_ROOT}")
     target_link_libraries(uWeddingPlayer PRIVATE Qt5::WebSockets)
 endif()
 

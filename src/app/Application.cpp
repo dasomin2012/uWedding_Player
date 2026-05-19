@@ -10,7 +10,9 @@
 
 #if defined(UWP_HAS_OBS)
 #include "obs/ObsClient.h"
+#include "obs/ObsProcessManager.h"
 #include <QJsonObject>
+#include <QMetaEnum>
 #endif
 
 #include <QCoreApplication>
@@ -165,6 +167,24 @@ bool Application::initialize() {
         });
         qInfo() << "UWP_OBS_PING enabled — connecting to" << cfg.wsUrl;
         obs->connectToObs(cfg.wsUrl, cfg.wsPassword);
+    }
+
+    // O3: UWP_OBS_START=1 이면 OBS 프로세스 수명 관리 시작(숨김 기동 +
+    // 프로젝터 + 크래시 자동복구). Take 는 여전히 qt — O4 에서 전환.
+    if (qEnvironmentVariableIntValue("UWP_OBS_START") > 0) {
+        auto* mgr = new ObsProcessManager(m_settings.obs(), this);
+        connect(mgr, &ObsProcessManager::stateChanged, this,
+                [](ObsProcessManager::State s) {
+                    qInfo() << "ObsProcessManager state ="
+                            << QMetaEnum::fromType<ObsProcessManager::State>()
+                                   .valueToKey(static_cast<int>(s));
+                });
+        connect(mgr, &ObsProcessManager::ready, this,
+                []() { qInfo() << "OBS ready (hidden, projector up)"; });
+        connect(mgr, &ObsProcessManager::failed, this,
+                [](const QString& r) { qWarning() << "OBS failed:" << r; });
+        qInfo() << "UWP_OBS_START enabled — launching managed OBS";
+        mgr->start();
     }
 #endif
 
