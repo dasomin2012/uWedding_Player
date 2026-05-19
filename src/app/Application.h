@@ -41,6 +41,9 @@ private slots:
 private:
     QString resolveSettingsPath() const;
     QString resolveScenePath() const;
+#if defined(UWP_HAS_OBS)
+    void installQtFallback(const QString& reason);  // O6-A: OBS Failed → qt
+#endif
 
     Settings                        m_settings;
     QString                         m_settingsPath;

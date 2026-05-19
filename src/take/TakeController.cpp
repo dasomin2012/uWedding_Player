@@ -24,6 +24,10 @@ TakeController::TakeController(SceneModel* scene, ILiveSink* live,
                            : TransitionEffect::Mode::Fade;
 }
 
+void TakeController::setSink(ILiveSink* live) {
+    m_live = live;
+}
+
 void TakeController::setMode(TransitionEffect::Mode m) {
     if (m_mode == m) return;
     m_mode = m;

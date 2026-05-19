@@ -113,9 +113,8 @@ bool Application::initialize() {
                 });
         connect(m_obsProc.get(), &ObsProcessManager::failed, this,
                 [this](const QString& r) {
-                    qCritical() << "OBS failed:" << r;
-                    m_controlWindow->setStatusText(
-                        tr("OBS failed: %1").arg(r));
+                    qCritical() << "OBS failed — falling back to qt:" << r;
+                    installQtFallback(r);
                 });
         sink = m_obsBackend.get();
         qInfo() << "engine=obs — launching managed OBS";
@@ -212,6 +211,43 @@ bool Application::initialize() {
 
     return true;
 }
+
+#if defined(UWP_HAS_OBS)
+// O6-A: OBS 가 재기동 한계를 초과해 Failed 로 떨어지면 본식이 멈추지
+// 않도록 qt(LiveWindow/libVLC) 백엔드로 자동 폴백한다.
+void Application::installQtFallback(const QString& reason) {
+    // 1) TakeController 가 OBS 백엔드를 더는 참조하지 않도록 즉시 단절
+    if (m_takeController)
+        m_takeController->setSink(m_liveWindow.get());
+
+    // 2) 새 sink(qt)에 캔버스/전환 모드 재주입
+    m_liveWindow->setCanvasSize(m_settings.canvasWidth(),
+                                m_settings.canvasHeight());
+    const auto mode = (m_settings.takeDefaultMode().toLower() == "cut")
+        ? TransitionEffect::Mode::Cut
+        : TransitionEffect::Mode::Fade;
+    if (m_takeController) m_takeController->setMode(mode);
+
+    // 3) OBS 경로에서 숨겨져 있던 LiveWindow 표시
+    m_liveWindow->showOnMonitor(m_settings.outputMonitorIndex());
+
+    // 4) 현재 Preview 를 즉시 다시 take (Live 검정 회피 — best-effort)
+    if (m_takeController) m_takeController->take();
+
+    // 5) OBS 리소스 정리는 다음 이벤트 루프 턴에. 지금은 m_obsProc 의
+    //    failed 시그널 emit 컨텍스트 위라 즉시 reset 시 크래시.
+    //    역순 소멸 규칙대로 backend 먼저, proc 나중.
+    QMetaObject::invokeMethod(this, [this]() {
+        m_obsBackend.reset();
+        m_obsProc.reset();
+    }, Qt::QueuedConnection);
+
+    // 6) UI 안내
+    m_controlWindow->setStatusText(
+        tr("OBS 실패 — qt 백엔드로 폴백됨: %1").arg(reason));
+    qInfo() << "Application: qt fallback installed — reason:" << reason;
+}
+#endif
 
 void Application::shutdown() {
     if (m_liveWindow) m_liveWindow->stopVideo();

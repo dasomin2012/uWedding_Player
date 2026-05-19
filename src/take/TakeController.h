@@ -21,6 +21,10 @@ public:
 
     TransitionEffect::Mode mode() const { return m_mode; }
 
+    // 런타임 sink 교체용 (O6-A: OBS Failed 시 qt 폴백 등).
+    // 캔버스/전환모드 재동기화는 호출 측 책임.
+    void setSink(ILiveSink* live);
+
 public slots:
     void setMode(TransitionEffect::Mode m);
     void take();                 // 현재 씬을 Live 로 송출
