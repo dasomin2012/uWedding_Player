@@ -15,6 +15,7 @@ class SnapshotCache;
 class PreviewCanvas;
 class PropertyPanel;
 class MediaListWidget;
+class ProgramListWidget;
 
 // Phase 3 운용자 화면.
 //   +-----------+----------------------+----------+
@@ -32,6 +33,9 @@ public:
 
 public slots:
     void setStatusText(const QString& text);
+
+public:
+    ProgramListWidget* programList() const { return m_programList; }  // Application 와이어링용
 
 signals:
     void selectOutputMonitorRequested();
@@ -53,10 +57,10 @@ private:
     MediaListWidget* m_mediaList  = nullptr;
     PreviewCanvas*   m_canvas     = nullptr;
     PropertyPanel*   m_property   = nullptr;
-    QLabel*          m_liveMirror = nullptr;
-    QPushButton*     m_takeButton = nullptr;
-    QComboBox*       m_takeMode   = nullptr;
-    QPushButton*     m_programButtons[8] {};
+    QLabel*            m_liveMirror = nullptr;
+    QPushButton*       m_takeButton = nullptr;
+    QComboBox*         m_takeMode   = nullptr;
+    ProgramListWidget* m_programList = nullptr;
 };
 
 } // namespace uwp

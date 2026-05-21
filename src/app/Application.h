@@ -15,6 +15,7 @@ class SnapshotCache;
 class SceneModel;
 class TakeController;
 class NovaStarController;
+class ProgramRepository;
 #if defined(UWP_HAS_OBS)
 class ObsProcessManager;
 class ObsLiveBackend;
@@ -42,6 +43,8 @@ private slots:
 private:
     QString resolveSettingsPath() const;
     QString resolveScenePath() const;
+    QString dataDir() const;                         // <appDir>/data
+    QString resolveProgramsPath() const;             // <appDir>/data/programs.json
     QString currentNovaPresetId() const;            // O5: env > settings.default_preset_id
 #if defined(UWP_HAS_OBS)
     void installQtFallback(const QString& reason);  // O6-A: OBS Failed → qt
@@ -52,6 +55,7 @@ private:
     std::unique_ptr<LivePlayerPool> m_playerPool;     // 윈도우보다 오래 살아야 함
     std::unique_ptr<SnapshotCache>  m_snapshotCache;
     std::unique_ptr<SceneModel>     m_scene;
+    std::unique_ptr<ProgramRepository> m_programs;     // Phase 5
     std::unique_ptr<ControlWindow>  m_controlWindow;
     std::unique_ptr<LiveWindow>     m_liveWindow;
 #if defined(UWP_HAS_OBS)

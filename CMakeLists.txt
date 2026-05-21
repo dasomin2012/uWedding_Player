@@ -136,6 +136,12 @@ set(UWP_SOURCES
     src/novastar/NovaStarController.h
     src/novastar/NovaStarController.cpp
 
+    src/program/Program.h
+    src/program/ProgramRepository.h
+    src/program/ProgramRepository.cpp
+    src/program/ProgramListWidget.h
+    src/program/ProgramListWidget.cpp
+
     src/scene/Layer.h
     src/scene/Layer.cpp
     src/scene/SceneModel.h

@@ -8,6 +8,8 @@
 #include "scene/SceneSerializer.h"
 #include "take/TakeController.h"
 #include "novastar/NovaStarController.h"
+#include "program/ProgramRepository.h"
+#include "program/ProgramListWidget.h"
 
 #if defined(UWP_HAS_OBS)
 #include "obs/ObsClient.h"
@@ -52,6 +54,16 @@ QString Application::resolveScenePath() const {
     }
     QDir().mkpath(QFileInfo(p).absolutePath());
     return p;
+}
+
+QString Application::dataDir() const {
+    const QString d = QCoreApplication::applicationDirPath() + "/data";
+    QDir().mkpath(d);
+    return d;
+}
+
+QString Application::resolveProgramsPath() const {
+    return dataDir() + "/programs.json";       // D3: settings.json 과 분리
 }
 
 // O5: 본 단계 임시 매핑(Phase 5 ProgramRepository 도입 전).
@@ -101,6 +113,20 @@ bool Application::initialize() {
             this, &Application::onSaveSceneRequested);
     connect(m_controlWindow.get(), &ControlWindow::loadSceneRequested,
             this, &Application::onLoadSceneRequested);
+
+    // ----- Program 리스트 (Phase 5a — 표시만; 추가/삭제/재생은 5b) -----
+    m_programs = std::make_unique<ProgramRepository>(this);
+    if (auto* pl = m_controlWindow->programList()) {
+        auto refresh = [this, pl]() {
+            pl->setPrograms(m_programs->programs(), dataDir());
+        };
+        connect(m_programs.get(), &ProgramRepository::programsReloaded, this, refresh);
+        connect(m_programs.get(), &ProgramRepository::programAdded,   this, refresh);
+        connect(m_programs.get(), &ProgramRepository::programRemoved, this, refresh);
+        connect(m_programs.get(), &ProgramRepository::programUpdated, this, refresh);
+    }
+    // 부재 시 빈 리스트로 시작(에러 아님). 손상 시 .bak 백업 후 빈 리스트.
+    m_programs->load(resolveProgramsPath());
 
     // ----- 송출 백엔드 선택 (engine: qt | obs) -----
     ILiveSink* sink   = m_liveWindow.get();

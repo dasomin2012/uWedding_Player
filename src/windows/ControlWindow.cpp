@@ -5,6 +5,7 @@
 #include "editor/PreviewCanvas.h"
 #include "editor/PropertyPanel.h"
 #include "editor/MediaListWidget.h"
+#include "program/ProgramListWidget.h"
 
 #include <QLabel>
 #include <QPushButton>
@@ -140,21 +141,13 @@ void ControlWindow::createCentralLayout() {
     topRow->setStretchFactor(2, 2);
     topRow->setCollapsible(1, false);
 
-    // ----- 하단: Program List (placeholder) -----
-    auto* programWidget = new QWidget;
-    programWidget->setMinimumHeight(120);
-    auto* programLayout = new QGridLayout(programWidget);
-    programLayout->setContentsMargins(0, 4, 0, 0);
-    for (int i = 0; i < 8; ++i) {
-        m_programButtons[i] = new QPushButton(QString("Program #%1").arg(i + 1));
-        m_programButtons[i]->setMinimumHeight(56);
-        m_programButtons[i]->setEnabled(false);  // Phase 5 에서 활성화
-        programLayout->addWidget(m_programButtons[i], i / 4, i % 4);
-    }
+    // ----- 하단: Program List (Phase 5 — 동적 리스트) -----
+    m_programList = new ProgramListWidget;
+    m_programList->setMinimumHeight(140);
 
     auto* centerCol = new QSplitter(Qt::Vertical);
     centerCol->addWidget(topRow);
-    centerCol->addWidget(programWidget);
+    centerCol->addWidget(m_programList);
     centerCol->setStretchFactor(0, 4);
     centerCol->setStretchFactor(1, 1);
 
