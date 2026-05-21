@@ -242,6 +242,11 @@ void LiveWindow::showOnMonitor(int monitorIndex) {
     QScreen* target = screens.at(idx);
     const QRect g   = target->geometry();
 
+    // ★ 이미 표시중(특히 fullscreen)이면 먼저 일반 상태로 해제해야 다른
+    //   모니터로 이동이 반영된다. fullscreen 상태에서는 setGeometry/ setScreen
+    //   이 무시되어 기존 모니터에 그대로 남는다.
+    if (isVisible()) showNormal();
+
     if (m_devMode) {
         qInfo() << "LiveWindow: single monitor only — dev windowed mode 1280x720";
         setWindowFlags(Qt::Window);
@@ -253,9 +258,10 @@ void LiveWindow::showOnMonitor(int monitorIndex) {
         setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
         setCursor(Qt::BlankCursor);
         setGeometry(g);
-        show();
-        if (auto* wh = windowHandle()) wh->setScreen(target);
-        showFullScreen();
+        show();                                   // 네이티브 핸들 보장
+        if (auto* wh = windowHandle()) wh->setScreen(target);  // 타깃 스크린 지정
+        setGeometry(g);                           // setScreen 후 정확히 타깃 rect 로
+        showFullScreen();                         // 타깃 모니터에서 fullscreen
     }
     relayoutList(m_layers);
     relayoutList(m_pending);

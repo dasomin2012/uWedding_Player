@@ -427,11 +427,9 @@ void Application::onSelectOutputMonitorRequested() {
     m_settings.save(m_settingsPath);
     m_liveWindow->showOnMonitor(newIdx);
 
-    // 영상이 재생 중이었다면 다시 재생 (HWND 가 새 위치로 이동했을 수 있음)
-    const QString v = m_settings.testVideoPath();
-    if (!v.isEmpty() && QFileInfo::exists(v)) {
-        m_liveWindow->playVideo(v);
-    }
+    // 모니터 이동 시 네이티브 윈도우가 재생성될 수 있으므로(플래그/스크린 변경)
+    // 현재 씬을 새 모니터에 다시 commit → 재생 내용 유지 + HWND 재바인딩.
+    if (m_takeController) m_takeController->take();
 }
 
 void Application::onOpenSettingsRequested() {
