@@ -6,10 +6,11 @@
 namespace uwp {
 
 struct NovaStarConfig {
-    bool    enabled  = false;
-    QString host     = "192.168.1.100";
-    int     port     = 5200;
-    QString protocol = "udp";
+    bool    enabled         = false;
+    QString host            = "192.168.1.100";
+    int     port            = 5200;
+    QString protocol        = "udp";
+    QString defaultPresetId = "";   // O5 임시 매핑. Phase 5 ProgramRepository 도입 시 제거.
 };
 
 // 송출 백엔드가 OBS 일 때만 사용. obs-websocket(네트워크 프로토콜)으로만

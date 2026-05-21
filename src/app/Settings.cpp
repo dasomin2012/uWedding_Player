@@ -46,10 +46,12 @@ bool Settings::load(const QString& path) {
     m_sceneScratch           = s.value("scene_scratch").toString(m_sceneScratch);
 
     const QJsonObject nova   = s.value("novastar").toObject();
-    m_novaStar.enabled       = nova.value("enabled").toBool(m_novaStar.enabled);
-    m_novaStar.host          = nova.value("host").toString(m_novaStar.host);
-    m_novaStar.port          = nova.value("port").toInt(m_novaStar.port);
-    m_novaStar.protocol      = nova.value("protocol").toString(m_novaStar.protocol);
+    m_novaStar.enabled         = nova.value("enabled").toBool(m_novaStar.enabled);
+    m_novaStar.host            = nova.value("host").toString(m_novaStar.host);
+    m_novaStar.port            = nova.value("port").toInt(m_novaStar.port);
+    m_novaStar.protocol        = nova.value("protocol").toString(m_novaStar.protocol);
+    m_novaStar.defaultPresetId = nova.value("default_preset_id")
+                                     .toString(m_novaStar.defaultPresetId);
 
     m_engine                 = s.value("engine").toString(m_engine);
 
@@ -70,10 +72,11 @@ bool Settings::save(const QString& path) const {
     canvas["height"] = m_canvasHeight;
 
     QJsonObject nova;
-    nova["enabled"]  = m_novaStar.enabled;
-    nova["host"]     = m_novaStar.host;
-    nova["port"]     = m_novaStar.port;
-    nova["protocol"] = m_novaStar.protocol;
+    nova["enabled"]           = m_novaStar.enabled;
+    nova["host"]              = m_novaStar.host;
+    nova["port"]              = m_novaStar.port;
+    nova["protocol"]          = m_novaStar.protocol;
+    nova["default_preset_id"] = m_novaStar.defaultPresetId;
 
     QJsonObject obs;
     obs["exe_path"]          = m_obs.exePath;

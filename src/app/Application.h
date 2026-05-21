@@ -14,6 +14,7 @@ class LivePlayerPool;
 class SnapshotCache;
 class SceneModel;
 class TakeController;
+class NovaStarController;
 #if defined(UWP_HAS_OBS)
 class ObsProcessManager;
 class ObsLiveBackend;
@@ -41,6 +42,7 @@ private slots:
 private:
     QString resolveSettingsPath() const;
     QString resolveScenePath() const;
+    QString currentNovaPresetId() const;            // O5: env > settings.default_preset_id
 #if defined(UWP_HAS_OBS)
     void installQtFallback(const QString& reason);  // O6-A: OBS Failed → qt
 #endif
@@ -58,7 +60,13 @@ private:
     std::unique_ptr<ObsLiveBackend>    m_obsBackend;
     std::unique_ptr<ObsProcessManager> m_obsProc;
 #endif
+    // O5: m_takeController 보다 위에 선언 → take 가 먼저 소멸 후 nova 소멸.
+    // taken/transitionEnded 콜백이 nova 참조 → 역순 소멸로 안전 보장.
+    std::unique_ptr<NovaStarController> m_novaStar;
     std::unique_ptr<TakeController> m_takeController;
+
+    // O6-A 폴백 후에도 LED 동기가 이어지도록 taken 라우팅 조건에 사용.
+    bool m_qtFallbackActive = false;
 };
 
 } // namespace uwp

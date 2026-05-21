@@ -7,6 +7,7 @@
 #include "scene/SceneModel.h"
 #include "scene/SceneSerializer.h"
 #include "take/TakeController.h"
+#include "novastar/NovaStarController.h"
 
 #if defined(UWP_HAS_OBS)
 #include "obs/ObsClient.h"
@@ -51,6 +52,14 @@ QString Application::resolveScenePath() const {
     }
     QDir().mkpath(QFileInfo(p).absolutePath());
     return p;
+}
+
+// O5: 본 단계 임시 매핑(Phase 5 ProgramRepository 도입 전).
+//     UWP_NOVASTAR_PRESET 환경변수 > settings.novastar.default_preset_id > "" (no-op).
+QString Application::currentNovaPresetId() const {
+    const QString env = qEnvironmentVariable("UWP_NOVASTAR_PRESET");
+    if (!env.isEmpty()) return env;
+    return m_settings.novaStar().defaultPresetId;
 }
 
 bool Application::initialize() {
@@ -122,6 +131,10 @@ bool Application::initialize() {
     }
 #endif
 
+    // ----- NovaStar 동기 (O5) -----
+    m_novaStar = std::make_unique<NovaStarController>(
+        m_settings.novaStar(), this);
+
     // ----- Take (Preview SceneModel -> Live) -----
     m_takeController = std::make_unique<TakeController>(
         m_scene.get(), sink, &m_settings);
@@ -140,6 +153,24 @@ bool Application::initialize() {
             this, [this](int n) {
                 m_controlWindow->setStatusText(tr("Take: %1 layer(s) → Live").arg(n));
             });
+
+    // O5: take 완료 → NovaStar preset 호출.
+    //  - OBS 정상 경로: ObsLiveBackend::transitionEnded 가 정확한 LED 동기 타이밍을 담당.
+    //  - qt 경로 / OBS→qt 폴백 이후: TakeController::taken 에서 1회.
+    //  m_qtFallbackActive 는 installQtFallback() 에서 true 로 세팅됨.
+    connect(m_takeController.get(), &TakeController::taken, this,
+            [this](int) {
+                const bool isObs = (m_settings.engine().compare(
+                    QLatin1String("obs"), Qt::CaseInsensitive) == 0);
+                if (!isObs || m_qtFallbackActive)
+                    m_novaStar->callPreset(currentNovaPresetId());
+            });
+#if defined(UWP_HAS_OBS)
+    if (useObs && m_obsBackend) {
+        connect(m_obsBackend.get(), &ObsLiveBackend::transitionEnded, this,
+                [this]() { m_novaStar->callPreset(currentNovaPresetId()); });
+    }
+#endif
 
     // 스냅샷 실패는 상태바로 안내 (성공은 PreviewCanvas/MediaList 가 직접 수신)
     connect(m_snapshotCache.get(), &SnapshotCache::snapshotFailed,
@@ -220,19 +251,41 @@ void Application::installQtFallback(const QString& reason) {
     if (m_takeController)
         m_takeController->setSink(m_liveWindow.get());
 
-    // 2) 새 sink(qt)에 캔버스/전환 모드 재주입
+    // 2) 새 sink(qt)에 캔버스 재주입
     m_liveWindow->setCanvasSize(m_settings.canvasWidth(),
                                 m_settings.canvasHeight());
-    const auto mode = (m_settings.takeDefaultMode().toLower() == "cut")
-        ? TransitionEffect::Mode::Cut
-        : TransitionEffect::Mode::Fade;
-    if (m_takeController) m_takeController->setMode(mode);
+
+    // 2-R1) 응급 폴백: 첫 take 는 Cut 강제(검정 시간 최소화).
+    //       사용자가 설정한 모드는 다음 이벤트 루프 턴에 복귀 → 후속 take 정상.
+    //       (OBS 가 막 죽은 직후라 dip-to-black 800ms 가 한 번 더 끼이는 것보다
+    //        가장 빠른 복구가 본식 안전성에 유리.)
+    TransitionEffect::Mode savedMode = TransitionEffect::Mode::Fade;
+    if (m_takeController) {
+        savedMode = m_takeController->mode();
+        m_takeController->setMode(TransitionEffect::Mode::Cut);
+    }
 
     // 3) OBS 경로에서 숨겨져 있던 LiveWindow 표시
     m_liveWindow->showOnMonitor(m_settings.outputMonitorIndex());
 
-    // 4) 현재 Preview 를 즉시 다시 take (Live 검정 회피 — best-effort)
+    // 4) 현재 Preview 를 즉시 다시 take (Live 검정 회피 — best-effort).
+    //    이 시점에서 m_qtFallbackActive 는 아직 false → taken 핸들러는
+    //    engine=obs && !fallback 으로 보고 NovaStar 콜을 스킵. take() 가
+    //    !m_scene/!m_live 로 일찍 리턴해 taken 이 emit 안 될 수도 있다.
     if (m_takeController) m_takeController->take();
+
+    // 4-O5) 위와 무관하게 폴백 응급 take 의 LED 동기는 여기서 1회 명시 호출.
+    if (m_novaStar) m_novaStar->callPreset(currentNovaPresetId());
+
+    // 4-O5-flag) 이후의 일반 Take(qt 백엔드 사용 중이지만 settings.engine
+    //   값은 "obs" 인 상태)에서도 taken 핸들러가 NovaStar 콜을 발사하도록
+    //   플래그 ON. 응급 take 의 이중 호출은 위 순서로 구조적으로 차단.
+    m_qtFallbackActive = true;
+
+    // 4-R1) 사용자가 설정했던 전환 모드 복귀 — 다음 이벤트 루프 턴.
+    QMetaObject::invokeMethod(this, [this, savedMode]() {
+        if (m_takeController) m_takeController->setMode(savedMode);
+    }, Qt::QueuedConnection);
 
     // 5) OBS 리소스 정리는 다음 이벤트 루프 턴에. 지금은 m_obsProc 의
     //    failed 시그널 emit 컨텍스트 위라 즉시 reset 시 크래시.

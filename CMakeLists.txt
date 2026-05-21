@@ -133,6 +133,9 @@ set(UWP_SOURCES
     src/take/TakeController.h
     src/take/TakeController.cpp
 
+    src/novastar/NovaStarController.h
+    src/novastar/NovaStarController.cpp
+
     src/scene/Layer.h
     src/scene/Layer.cpp
     src/scene/SceneModel.h
