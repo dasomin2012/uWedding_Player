@@ -69,11 +69,17 @@ QString Application::resolveProgramsPath() const {
     return dataDir() + "/programs.json";       // D3: settings.json 과 분리
 }
 
-// O5: 본 단계 임시 매핑(Phase 5 ProgramRepository 도입 전).
-//     UWP_NOVASTAR_PRESET 환경변수 > settings.novastar.default_preset_id > "" (no-op).
+// Phase 5c: program 인식 룩업.
+//   UWP_NOVASTAR_PRESET > 현재 재생 program 의 novastarPresetId
+//   > settings.novastar.default_preset_id > "" (no-op).
 QString Application::currentNovaPresetId() const {
     const QString env = qEnvironmentVariable("UWP_NOVASTAR_PRESET");
     if (!env.isEmpty()) return env;
+    if (m_programs && !m_currentProgramId.isEmpty()) {
+        if (const Program* p = m_programs->find(m_currentProgramId))
+            if (!p->novastarPresetId.isEmpty())
+                return p->novastarPresetId;
+    }
     return m_settings.novaStar().defaultPresetId;
 }
 
@@ -161,6 +167,12 @@ bool Application::initialize() {
     connect(m_scene.get(), &SceneModel::layerChanged,  this, [this](const QString&){ scheduleEditSave(); });
     connect(m_scene.get(), &SceneModel::zOrderChanged, this, [this](){ scheduleEditSave(); });
 
+    // Phase 5c — program 자동 진행 타이머 (displayTimeSec 만료 → endAction).
+    m_programAdvanceTimer = new QTimer(this);
+    m_programAdvanceTimer->setSingleShot(true);
+    connect(m_programAdvanceTimer, &QTimer::timeout,
+            this, &Application::onProgramAdvance);
+
     // ----- 송출 백엔드 선택 (engine: qt | obs) -----
     ILiveSink* sink   = m_liveWindow.get();
     bool       useObs = false;
@@ -199,6 +211,10 @@ bool Application::initialize() {
         m_scene.get(), sink, &m_settings);
     connect(m_controlWindow.get(), &ControlWindow::takeRequested,
             m_takeController.get(), &TakeController::take);
+    // 수동 TAKE → 진행중 자동 진행 중단(운용자 수동 제어 우선, §R5/4.3).
+    connect(m_controlWindow.get(), &ControlWindow::takeRequested, this, [this]() {
+        if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
+    });
     connect(m_controlWindow.get(), &ControlWindow::takeModeChanged,
             this, [this](const QString& mode) {
                 const auto m = (mode.toLower() == "cut")
@@ -265,6 +281,15 @@ bool Application::initialize() {
     if (qEnvironmentVariableIntValue("UWP_AUTOTAKE") > 0) {
         QTimer::singleShot(1500, m_takeController.get(), &TakeController::take);
         qInfo() << "UWP_AUTOTAKE enabled — auto Take in 1500ms";
+    }
+    // 검증/자동화 훅: UWP_AUTOPLAY=1 이면 시작 후 첫 program 자동 Play
+    // (Phase 5c 자동 진행·NovaStar 경로 검증용).
+    if (qEnvironmentVariableIntValue("UWP_AUTOPLAY") > 0) {
+        QTimer::singleShot(1500, this, [this]() {
+            if (m_programs && m_programs->count() > 0)
+                playProgram(m_programs->programs().first().id);
+        });
+        qInfo() << "UWP_AUTOPLAY enabled — auto Play first program in 1500ms";
     }
 
 #if defined(UWP_HAS_OBS)
@@ -510,20 +535,79 @@ void Application::onProgramSelected(const QString& id) {
 }
 
 void Application::onProgramPlayRequested(const QString& id) {
+    playProgram(id);   // 수동 Play → 공통 경로(자동 진행 타이머 포함)
+}
+
+// ---- Phase 5c — 재생 / 자동 진행 -------------------------------
+// 수동 Play 와 자동 진행이 공유하는 단일 경로.
+void Application::playProgram(const QString& id) {
     flushEditSave();
     const Program* p = m_programs->find(id);
     if (!p) return;
+
     m_suppressEditSave = true;
     m_scene->replaceAll(p->layers);
     m_suppressEditSave = false;
-    m_editProgramId = id;
-    if (m_takeController) m_takeController->take();   // Live 로 송출
-    m_currentProgramId = id;
+    m_editProgramId    = id;
+    m_currentProgramId = id;            // take 전에 설정 → currentNovaPresetId 정확
+
+    if (m_takeController) m_takeController->take();   // Live 송출 (+ taken→NovaStar)
+
     if (auto* pl = m_controlWindow->programList()) {
-        pl->setActiveProgram(id);
+        pl->setActiveProgram(id);       // 재생중 강조
         pl->selectProgram(id);
     }
+
+    // 자동 진행: displayTimeSec>0 이면 타이머 시작(§R5: Play 에서만 시작).
+    if (m_programAdvanceTimer) {
+        m_programAdvanceTimer->stop();
+        if (p->displayTimeSec > 0) {
+            m_programAdvanceTimer->start(p->displayTimeSec * 1000);
+            qInfo() << "Program advance armed:" << p->displayTimeSec << "s,"
+                    << "action=" << endActionToString(p->endAction)
+                    << "program=" << p->name;
+        }
+    }
     m_controlWindow->setStatusText(tr("Playing: %1").arg(p->name));
+}
+
+void Application::onProgramAdvance() {
+    if (m_currentProgramId.isEmpty()) return;
+    const Program* cur = m_programs->find(m_currentProgramId);
+    if (!cur) return;
+    const EndAction act   = cur->endAction;
+    const QString   curId = m_currentProgramId;
+
+    switch (act) {
+    case EndAction::Next: {
+        const QString next = m_programs->nextIdAfter(curId, EndAction::Next);
+        if (next.isEmpty()) {           // 마지막 → stop (R6: 무한루프 방지)
+            qInfo() << "Program advance: end of list → stop";
+            stopProgramPlayback();
+        } else {
+            playProgram(next);
+        }
+        break;
+    }
+    case EndAction::Loop:
+        playProgram(curId);             // 자기 자신 재생(타이머 재무장)
+        break;
+    case EndAction::Stop:
+        stopProgramPlayback();
+        break;
+    case EndAction::Hold:
+    default:
+        break;                          // Live 유지, 타이머 만료로 정지
+    }
+}
+
+void Application::stopProgramPlayback() {
+    if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
+    if (m_takeController) m_takeController->clearLive();   // Live 비움(검정), 편집 무영향
+    m_currentProgramId.clear();
+    if (auto* pl = m_controlWindow->programList())
+        pl->setActiveProgram(QString());
+    m_controlWindow->setStatusText(tr("Program stopped"));
 }
 
 // ---- Phase 5b — 편집 자동저장 (현재 편집 대상 program) ----------

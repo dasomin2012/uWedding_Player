@@ -59,6 +59,11 @@ private:
     void scheduleEditSave();                         // 씬 변경 → 디바운스 타이머 재시작
     void persistEditProgram();                       // 편집 대상에 layers+썸네일 저장
     void flushEditSave();                            // 대기중 저장을 즉시 반영
+
+    // Phase 5c — program 재생/자동 진행
+    void playProgram(const QString& id);             // 공통 재생 경로(수동/자동 공용)
+    void onProgramAdvance();                         // displayTime 만료 → endAction 처리
+    void stopProgramPlayback();                      // Stop: Live 클리어 + 타이머 정지
     QString currentNovaPresetId() const;            // O5: env > settings.default_preset_id
 #if defined(UWP_HAS_OBS)
     void installQtFallback(const QString& reason);  // O6-A: OBS Failed → qt
@@ -93,6 +98,9 @@ private:
     QString m_editProgramId;
     QTimer* m_editSaveTimer  = nullptr;   // 편집 자동저장 디바운스
     bool    m_suppressEditSave = false;   // 프로그램 로드 중 모델변경을 편집으로 오인 방지
+
+    // Phase 5c — program 자동 진행 타이머 (displayTimeSec 만료).
+    QTimer* m_programAdvanceTimer = nullptr;
 };
 
 } // namespace uwp

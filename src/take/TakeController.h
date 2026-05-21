@@ -28,6 +28,7 @@ public:
 public slots:
     void setMode(TransitionEffect::Mode m);
     void take();                 // 현재 씬을 Live 로 송출
+    void clearLive();            // 빈 씬을 Live 로 commit (Program Stop) — SceneModel 무영향
 
 signals:
     void modeChanged(TransitionEffect::Mode m);

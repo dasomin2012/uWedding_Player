@@ -61,4 +61,20 @@ void TakeController::take() {
     emit taken(snapshot.size());
 }
 
+void TakeController::clearLive() {
+    if (!m_live) return;
+    const int durationMs = m_settings ? m_settings->takeFadeDurationMs() : 800;
+    m_live->setTransition(m_mode == TransitionEffect::Mode::Fade, durationMs);
+
+    ILiveSink* live = m_live;
+    m_transition.run(
+        m_mode,
+        (m_mode == TransitionEffect::Mode::Fade) ? durationMs : 0,
+        live->transitionAnchor(),
+        [live](std::function<void()> done) {
+            live->applyScene({}, std::move(done));   // 빈 씬 → 검정 (SceneModel 무영향)
+        });
+    // 의도적으로 taken 미발화 — Stop 시 NovaStar 프리셋 호출하지 않음.
+}
+
 } // namespace uwp
