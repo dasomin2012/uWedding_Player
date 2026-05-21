@@ -3,6 +3,7 @@
 #include <QGraphicsView>
 #include <QHash>
 #include <QString>
+#include <QPixmap>
 
 class QGraphicsScene;
 class QGraphicsRectItem;
@@ -25,6 +26,9 @@ public:
                   QWidget* parent = nullptr);
 
     void fitStage();
+
+    // 현재 씬(스테이지=논리 캔버스 영역)을 size 픽스맵으로 렌더 (Program 썸네일용).
+    QPixmap renderThumbnail(const QSize& size) const;
 
 protected:
     void drawBackground(QPainter* p, const QRectF& rect) override;

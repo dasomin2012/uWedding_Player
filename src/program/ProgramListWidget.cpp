@@ -104,6 +104,32 @@ void ProgramListWidget::setPrograms(const QVector<Program>& programs,
     setActiveProgram(m_activeId);   // 강조 유지
 }
 
+void ProgramListWidget::selectProgram(const QString& id) {
+    if (id.isEmpty()) { m_list->clearSelection(); m_list->setCurrentItem(nullptr); return; }
+    for (int i = 0; i < m_list->count(); ++i) {
+        QListWidgetItem* it = m_list->item(i);
+        if (it->data(Qt::UserRole).toString() == id) {
+            m_list->setCurrentItem(it);
+            return;
+        }
+    }
+}
+
+void ProgramListWidget::updateItem(const QString& id, const QString& name,
+                                   const QString& thumbAbsPath) {
+    for (int i = 0; i < m_list->count(); ++i) {
+        QListWidgetItem* it = m_list->item(i);
+        if (it->data(Qt::UserRole).toString() != id) continue;
+        it->setText(name.isEmpty() ? id : name);
+        it->setToolTip(name);
+        QPixmap thumb;
+        if (!thumbAbsPath.isEmpty() && QFileInfo::exists(thumbAbsPath))
+            thumb.load(thumbAbsPath);
+        it->setIcon(QIcon(thumb.isNull() ? makeDefaultThumb() : thumb));
+        return;
+    }
+}
+
 void ProgramListWidget::setActiveProgram(const QString& id) {
     m_activeId = id;
     for (int i = 0; i < m_list->count(); ++i) {

@@ -24,6 +24,10 @@ public:
     // dataDir 기준 thumbnailRelPath 로 아이콘 로드. 없으면 기본 회색 박스.
     void setPrograms(const QVector<Program>& programs, const QString& dataDir);
     void setActiveProgram(const QString& id);   // 재생 중 강조 (Phase 5c)
+    void selectProgram(const QString& id);      // 편집 대상 항목을 리스트에서 선택
+    // 전체 재구성 없이 단일 항목의 이름/썸네일만 갱신 (편집 자동저장 시 깜빡임 방지).
+    void updateItem(const QString& id, const QString& name,
+                    const QString& thumbAbsPath);
 
 signals:
     void addRequested();                              // [+ Add]

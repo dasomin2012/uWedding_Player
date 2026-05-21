@@ -73,6 +73,22 @@ void PreviewCanvas::fitStage() {
     if (m_stage) fitInView(m_stage, Qt::KeepAspectRatio);
 }
 
+QPixmap PreviewCanvas::renderThumbnail(const QSize& size) const {
+    QPixmap pm(size);
+    pm.fill(Qt::black);
+    if (!m_scene) return pm;
+
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    // 스테이지(= 논리 캔버스 영역, Preview 정지화상)를 픽스맵에 꽉 채워 렌더.
+    const QRectF src = m_scene->sceneRect();
+    m_scene->render(&p, QRectF(QPointF(0, 0), QSizeF(size)), src,
+                    Qt::IgnoreAspectRatio);
+    p.end();
+    return pm;
+}
+
 void PreviewCanvas::drawBackground(QPainter* p, const QRectF& rect) {
     p->fillRect(rect, QColor(32, 32, 36));   // 스테이지 밖
     QGraphicsView::drawBackground(p, rect);

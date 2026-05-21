@@ -6,6 +6,8 @@
 
 #include "Settings.h"
 
+class QTimer;
+
 namespace uwp {
 
 class ControlWindow;
@@ -40,11 +42,23 @@ private slots:
     void onSaveSceneRequested();
     void onLoadSceneRequested();
 
+    // Phase 5b — Program 리스트 동작
+    void onProgramAddRequested();
+    void onProgramSelected(const QString& id);                 // 단일클릭: Preview 로드
+    void onProgramPlayRequested(const QString& id);            // 더블클릭/Play: Take
+    void onProgramRenameRequested(const QString& id, const QString& newName);
+    void onProgramDeleteRequested(const QString& id);
+
 private:
     QString resolveSettingsPath() const;
     QString resolveScenePath() const;
     QString dataDir() const;                         // <appDir>/data
     QString resolveProgramsPath() const;             // <appDir>/data/programs.json
+
+    // Phase 5b — 편집 자동저장 (현재 편집 대상 program 으로 binding)
+    void scheduleEditSave();                         // 씬 변경 → 디바운스 타이머 재시작
+    void persistEditProgram();                       // 편집 대상에 layers+썸네일 저장
+    void flushEditSave();                            // 대기중 저장을 즉시 반영
     QString currentNovaPresetId() const;            // O5: env > settings.default_preset_id
 #if defined(UWP_HAS_OBS)
     void installQtFallback(const QString& reason);  // O6-A: OBS Failed → qt
@@ -71,6 +85,14 @@ private:
 
     // O6-A 폴백 후에도 LED 동기가 이어지도록 taken 라우팅 조건에 사용.
     bool m_qtFallbackActive = false;
+
+    // Phase 5b/5c — 현재 재생중(Play) program id ("" = 없음).
+    QString m_currentProgramId;
+
+    // Phase 5b — 현재 편집 대상 program id ("" = 스크래치, 자동저장 안 함).
+    QString m_editProgramId;
+    QTimer* m_editSaveTimer  = nullptr;   // 편집 자동저장 디바운스
+    bool    m_suppressEditSave = false;   // 프로그램 로드 중 모델변경을 편집으로 오인 방지
 };
 
 } // namespace uwp

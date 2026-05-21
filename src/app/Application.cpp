@@ -10,6 +10,7 @@
 #include "novastar/NovaStarController.h"
 #include "program/ProgramRepository.h"
 #include "program/ProgramListWidget.h"
+#include "editor/PreviewCanvas.h"
 
 #if defined(UWP_HAS_OBS)
 #include "obs/ObsClient.h"
@@ -30,6 +31,8 @@
 #include <QStatusBar>
 #include <QStringList>
 #include <QTimer>
+#include <QFile>
+#include <QPixmap>
 #include <QDebug>
 
 namespace uwp {
@@ -123,10 +126,40 @@ bool Application::initialize() {
         connect(m_programs.get(), &ProgramRepository::programsReloaded, this, refresh);
         connect(m_programs.get(), &ProgramRepository::programAdded,   this, refresh);
         connect(m_programs.get(), &ProgramRepository::programRemoved, this, refresh);
-        connect(m_programs.get(), &ProgramRepository::programUpdated, this, refresh);
+        // 편집 자동저장은 빈번하므로 update 는 전체 재구성 대신 단일 항목만 갱신.
+        connect(m_programs.get(), &ProgramRepository::programUpdated, this,
+                [this, pl](const QString& id) {
+                    const Program* p = m_programs->find(id);
+                    if (!p) return;
+                    const QString thumb = p->thumbnailRelPath.isEmpty()
+                        ? QString() : dataDir() + "/" + p->thumbnailRelPath;
+                    pl->updateItem(id, p->name, thumb);
+                });
+
+        // Phase 5b — 리스트 동작 와이어링
+        connect(pl, &ProgramListWidget::addRequested,
+                this, &Application::onProgramAddRequested);
+        connect(pl, &ProgramListWidget::programSelected,
+                this, &Application::onProgramSelected);
+        connect(pl, &ProgramListWidget::playRequested,
+                this, &Application::onProgramPlayRequested);
+        connect(pl, &ProgramListWidget::renameRequested,
+                this, &Application::onProgramRenameRequested);
+        connect(pl, &ProgramListWidget::deleteRequested,
+                this, &Application::onProgramDeleteRequested);
     }
     // 부재 시 빈 리스트로 시작(에러 아님). 손상 시 .bak 백업 후 빈 리스트.
     m_programs->load(resolveProgramsPath());
+
+    // Phase 5b — 편집 자동저장: 씬 변경 → 디바운스 → 현재 편집 program 에 반영.
+    m_editSaveTimer = new QTimer(this);
+    m_editSaveTimer->setSingleShot(true);
+    m_editSaveTimer->setInterval(500);
+    connect(m_editSaveTimer, &QTimer::timeout, this, &Application::persistEditProgram);
+    connect(m_scene.get(), &SceneModel::layerAdded,    this, [this](const QString&){ scheduleEditSave(); });
+    connect(m_scene.get(), &SceneModel::layerRemoved,  this, [this](const QString&){ scheduleEditSave(); });
+    connect(m_scene.get(), &SceneModel::layerChanged,  this, [this](const QString&){ scheduleEditSave(); });
+    connect(m_scene.get(), &SceneModel::zOrderChanged, this, [this](){ scheduleEditSave(); });
 
     // ----- 송출 백엔드 선택 (engine: qt | obs) -----
     ILiveSink* sink   = m_liveWindow.get();
@@ -329,6 +362,7 @@ void Application::installQtFallback(const QString& reason) {
 #endif
 
 void Application::shutdown() {
+    flushEditSave();   // 종료 전 대기중 편집 저장 확정
     if (m_liveWindow) m_liveWindow->stopVideo();
     if (m_scene) {
         SceneSerializer::saveScene(*m_scene, resolveScenePath());
@@ -422,6 +456,147 @@ void Application::onLoadSceneRequested() {
         m_controlWindow->setStatusText(tr("Scene loaded: %1").arg(p));
     else
         m_controlWindow->setStatusText(tr("No scene file at %1").arg(p));
+}
+
+// ---- Phase 5b — Program 동작 -----------------------------------
+// [+ Add] = 빈 Program 생성 + 편집 대상으로 바인딩. 이후 Preview 편집은
+// 디바운스되어 이 program 에 자동 저장(layers + 썸네일).
+void Application::onProgramAddRequested() {
+    flushEditSave();   // 직전 편집 대상 저장 확정
+
+    Program p;
+    p.id        = m_programs->makeUniqueId();
+    p.name      = tr("Program %1").arg(m_programs->count() + 1);
+    p.endAction = EndAction::Hold;            // 자동진행 기본=정지(안전, D5)
+    // 레이어 없음(빈 프로그램). 편집이 채운다.
+
+    // Preview 를 비워 편집 시작점으로. (로드성 변경이므로 자동저장 억제)
+    m_suppressEditSave = true;
+    m_scene->clear();
+    m_suppressEditSave = false;
+
+    // 빈 캔버스 썸네일 1회 렌더
+    const QString thumbsRel = QStringLiteral("programs/thumbs");
+    QDir().mkpath(dataDir() + "/" + thumbsRel);
+    if (auto* pc = m_controlWindow->previewCanvas()) {
+        const QSize cs = m_scene->canvasSize();
+        const int tw = 320;
+        const int th = (cs.width() > 0)
+            ? qMax(1, qRound(320.0 * cs.height() / cs.width())) : 180;
+        const QPixmap pm  = pc->renderThumbnail(QSize(tw, th));
+        const QString rel = thumbsRel + "/" + p.id + ".png";
+        if (!pm.isNull() && pm.save(dataDir() + "/" + rel, "PNG"))
+            p.thumbnailRelPath = rel;
+    }
+
+    m_programs->add(p);                       // → programAdded → 리스트 갱신
+    m_programs->save(resolveProgramsPath());
+
+    m_editProgramId = p.id;                    // 이후 편집은 이 program 에 저장
+    if (auto* pl = m_controlWindow->programList()) pl->selectProgram(p.id);
+    m_controlWindow->setStatusText(
+        tr("Added (editing): %1 — 미디어를 배치하면 자동 저장됩니다").arg(p.name));
+}
+
+void Application::onProgramSelected(const QString& id) {
+    flushEditSave();                           // 이전 편집 대상 저장 확정
+    const Program* p = m_programs->find(id);
+    if (!p) return;
+    m_suppressEditSave = true;
+    m_scene->replaceAll(p->layers);            // Preview/Edit 로드 — Live 무영향(D2)
+    m_suppressEditSave = false;
+    m_editProgramId = id;                      // 편집 대상 전환 → 이후 편집 자동저장
+    m_controlWindow->setStatusText(tr("Loaded: %1").arg(p->name));
+}
+
+void Application::onProgramPlayRequested(const QString& id) {
+    flushEditSave();
+    const Program* p = m_programs->find(id);
+    if (!p) return;
+    m_suppressEditSave = true;
+    m_scene->replaceAll(p->layers);
+    m_suppressEditSave = false;
+    m_editProgramId = id;
+    if (m_takeController) m_takeController->take();   // Live 로 송출
+    m_currentProgramId = id;
+    if (auto* pl = m_controlWindow->programList()) {
+        pl->setActiveProgram(id);
+        pl->selectProgram(id);
+    }
+    m_controlWindow->setStatusText(tr("Playing: %1").arg(p->name));
+}
+
+// ---- Phase 5b — 편집 자동저장 (현재 편집 대상 program) ----------
+void Application::scheduleEditSave() {
+    if (m_suppressEditSave || m_editProgramId.isEmpty()) return;
+    if (m_editSaveTimer) m_editSaveTimer->start();   // 디바운스 재시작
+}
+
+void Application::persistEditProgram() {
+    if (m_editProgramId.isEmpty()) return;
+    const Program* cur = m_programs->find(m_editProgramId);
+    if (!cur) { m_editProgramId.clear(); return; }
+    Program up = *cur;
+    up.layers = m_scene->layers();             // 현재 편집 내용 반영
+
+    if (auto* pc = m_controlWindow->previewCanvas()) {
+        const QSize cs = m_scene->canvasSize();
+        const int tw = 320;
+        const int th = (cs.width() > 0)
+            ? qMax(1, qRound(320.0 * cs.height() / cs.width())) : 180;
+        const QPixmap pm = pc->renderThumbnail(QSize(tw, th));
+        QString rel = up.thumbnailRelPath;
+        if (rel.isEmpty()) rel = QStringLiteral("programs/thumbs/") + up.id + ".png";
+        QDir().mkpath(QFileInfo(dataDir() + "/" + rel).absolutePath());
+        if (!pm.isNull() && pm.save(dataDir() + "/" + rel, "PNG"))
+            up.thumbnailRelPath = rel;
+    }
+
+    m_programs->update(up);                    // → programUpdated → updateItem
+    m_programs->save(resolveProgramsPath());
+}
+
+void Application::flushEditSave() {
+    if (m_editSaveTimer && m_editSaveTimer->isActive()) {
+        m_editSaveTimer->stop();
+        persistEditProgram();
+    }
+}
+
+void Application::onProgramRenameRequested(const QString& id,
+                                           const QString& newName) {
+    const Program* p = m_programs->find(id);
+    if (!p) return;
+    Program up = *p;
+    up.name = newName;
+    m_programs->update(up);                   // → programUpdated → 갱신
+    m_programs->save(resolveProgramsPath());
+}
+
+void Application::onProgramDeleteRequested(const QString& id) {
+    const Program* p = m_programs->find(id);
+    if (!p) return;
+    const QString name  = p->name;            // remove 전에 캡처(포인터 무효화 방지)
+    const QString thumb = p->thumbnailRelPath;
+
+    const auto reply = QMessageBox::question(
+        m_controlWindow.get(), tr("Delete Program"),
+        tr("Delete program \"%1\"?").arg(name));
+    if (reply != QMessageBox::Yes) return;
+
+    if (!thumb.isEmpty()) QFile::remove(dataDir() + "/" + thumb);
+    if (m_editProgramId == id) {               // 편집 대상이 삭제됨 → 자동저장 중단
+        if (m_editSaveTimer) m_editSaveTimer->stop();
+        m_editProgramId.clear();
+    }
+    if (m_currentProgramId == id) {
+        m_currentProgramId.clear();
+        if (auto* pl = m_controlWindow->programList())
+            pl->setActiveProgram(QString());
+    }
+    m_programs->remove(id);                    // → programRemoved → 갱신
+    m_programs->save(resolveProgramsPath());
+    m_controlWindow->setStatusText(tr("Deleted: %1").arg(name));
 }
 
 } // namespace uwp

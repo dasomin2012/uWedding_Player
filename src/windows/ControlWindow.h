@@ -35,7 +35,8 @@ public slots:
     void setStatusText(const QString& text);
 
 public:
-    ProgramListWidget* programList() const { return m_programList; }  // Application 와이어링용
+    ProgramListWidget* programList()  const { return m_programList; }  // Application 와이어링용
+    PreviewCanvas*     previewCanvas() const { return m_canvas; }      // 썸네일 렌더용
 
 signals:
     void selectOutputMonitorRequested();
