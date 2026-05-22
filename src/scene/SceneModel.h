@@ -45,6 +45,11 @@ public:
     void    select(const QString& id);
     QString selectedId() const { return m_selected; }
 
+    // 편집 보조 플래그(비직렬화): 리사이즈 시 종횡비 유지 여부.
+    // PropertyPanel "비율 고정" 체크박스가 단일 소스. LayerItem 드래그가 읽음.
+    bool aspectLocked() const { return m_aspectLocked; }
+    void setAspectLocked(bool on) { m_aspectLocked = on; }
+
     // 직렬화용 일괄 교체 (SceneSerializer 가 사용)
     void replaceAll(const QVector<Layer>& layers);
 
@@ -65,6 +70,7 @@ private:
     QVector<Layer> m_layers;
     QString        m_selected;
     int            m_idSeq = 0;
+    bool           m_aspectLocked = true;   // 편집 보조(비직렬화)
 };
 
 } // namespace uwp

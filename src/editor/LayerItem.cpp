@@ -137,24 +137,56 @@ void LayerItem::mousePressEvent(QGraphicsSceneMouseEvent* e) {
 
 void LayerItem::mouseMoveEvent(QGraphicsSceneMouseEvent* e) {
     if (m_drag == None) return;
-    const QPointF d = e->scenePos() - m_dragStartScene;
+
+    const bool corner = (m_drag == TL || m_drag == TR ||
+                         m_drag == BR || m_drag == BL);
+    const bool lockAspect = corner && m_model && m_model->aspectLocked()
+                            && m_startSceneRect.width()  > 0.5
+                            && m_startSceneRect.height() > 0.5;
+
     QRectF r = m_startSceneRect;
 
-    switch (m_drag) {
-        case Body: r.translate(d); break;
-        case TL: r.setTopLeft   (r.topLeft()    + d); break;
-        case T:  r.setTop       (r.top()        + d.y()); break;
-        case TR: r.setTopRight  (r.topRight()   + d); break;
-        case R:  r.setRight     (r.right()      + d.x()); break;
-        case BR: r.setBottomRight(r.bottomRight()+ d); break;
-        case B:  r.setBottom    (r.bottom()     + d.y()); break;
-        case BL: r.setBottomLeft(r.bottomLeft() + d); break;
-        case L:  r.setLeft      (r.left()       + d.x()); break;
-        default: break;
+    if (lockAspect) {
+        // 비율 고정: 반대편 코너를 고정점(anchor)으로 두고 종횡비를 유지하며
+        // 마우스를 따라 크기 조정(지배 축 기준).
+        const qreal aspect = m_startSceneRect.width() / m_startSceneRect.height();
+        QPointF anchor;
+        switch (m_drag) {
+            case TL: anchor = m_startSceneRect.bottomRight(); break;
+            case TR: anchor = m_startSceneRect.bottomLeft();  break;
+            case BR: anchor = m_startSceneRect.topLeft();     break;
+            case BL: anchor = m_startSceneRect.topRight();    break;
+            default: anchor = m_startSceneRect.topLeft();     break;
+        }
+        const QPointF m = e->scenePos();
+        const qreal desiredW = qAbs(m.x() - anchor.x());
+        const qreal desiredH = qAbs(m.y() - anchor.y());
+        qreal newW, newH;
+        if (desiredW >= desiredH * aspect) { newW = desiredW; newH = newW / aspect; }
+        else                               { newH = desiredH; newW = newH * aspect; }
+        newW = qMax<qreal>(8.0, newW);
+        newH = qMax<qreal>(8.0, newH);
+        const qreal x = (m.x() >= anchor.x()) ? anchor.x() : anchor.x() - newW;
+        const qreal y = (m.y() >= anchor.y()) ? anchor.y() : anchor.y() - newH;
+        r = QRectF(x, y, newW, newH);
+    } else {
+        const QPointF d = e->scenePos() - m_dragStartScene;
+        switch (m_drag) {
+            case Body: r.translate(d); break;
+            case TL: r.setTopLeft   (r.topLeft()    + d); break;
+            case T:  r.setTop       (r.top()        + d.y()); break;
+            case TR: r.setTopRight  (r.topRight()   + d); break;
+            case R:  r.setRight     (r.right()      + d.x()); break;
+            case BR: r.setBottomRight(r.bottomRight()+ d); break;
+            case B:  r.setBottom    (r.bottom()     + d.y()); break;
+            case BL: r.setBottomLeft(r.bottomLeft() + d); break;
+            case L:  r.setLeft      (r.left()       + d.x()); break;
+            default: break;
+        }
+        r = r.normalized();
+        if (r.width()  < 8) r.setWidth(8);
+        if (r.height() < 8) r.setHeight(8);
     }
-    r = r.normalized();
-    if (r.width()  < 8) r.setWidth(8);
-    if (r.height() < 8) r.setHeight(8);
 
     prepareGeometryChange();
     m_w = r.width();
