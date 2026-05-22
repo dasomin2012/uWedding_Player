@@ -56,6 +56,7 @@ public:
     QString             engine() const { return m_engine; }
     void                setEngine(const QString& e) { m_engine = e; }
     const ObsConfig&    obs()    const { return m_obs; }
+    void                setObsProjectorMonitor(int idx) { m_obs.projectorMonitor = idx; }
 
     // ----- Snapshot / FFmpeg (Phase 2) -----
     // 비어있으면 third_party/ffmpeg → PATH 순으로 자동 탐지.

@@ -423,6 +423,25 @@ void Application::onSelectOutputMonitorRequested() {
     if (!ok) return;
 
     const int newIdx = choice.section(':', 0, 0).toInt();
+
+#if defined(UWP_HAS_OBS)
+    // engine=obs: Live 출력은 LiveWindow 가 아니라 OBS 풀스크린 프로젝터다.
+    // → settings.obs.projector_monitor 를 갱신하고 프로젝터를 새 모니터로 재오픈.
+    //   (qt 폴백 중이면 아래 qt 경로로 처리)
+    const bool obsActive =
+        (m_settings.engine().compare(QLatin1String("obs"),
+                                     Qt::CaseInsensitive) == 0)
+        && m_obsProc && !m_qtFallbackActive;
+    if (obsActive) {
+        m_settings.setObsProjectorMonitor(newIdx);
+        m_settings.save(m_settingsPath);
+        m_obsProc->setProjectorMonitor(newIdx);
+        m_controlWindow->setStatusText(
+            tr("OBS projector → monitor %1").arg(newIdx));
+        return;
+    }
+#endif
+
     m_settings.setOutputMonitorIndex(newIdx);
     m_settings.save(m_settingsPath);
     m_liveWindow->showOnMonitor(newIdx);

@@ -41,6 +41,11 @@ public:
     void start();
     void stop();   // 정상 종료 (자동 재기동 안 함)
 
+    // 풀스크린 프로젝터를 다른 모니터로 옮긴다(engine=obs 출력 모니터 변경).
+    // Ready 상태면 기존 프로젝터 창을 닫고 새 모니터에 다시 연다. 아니면
+    // 인덱스만 저장 → 다음 Ready 에서 새 모니터로 열린다. (OBS 재기동 없음)
+    void setProjectorMonitor(int monitorIndex);
+
     State      state()  const { return m_state; }
     ObsClient* client() const { return m_client; }  // O4 가 동일 연결 재사용
 
@@ -60,8 +65,11 @@ private slots:
 private:
     void  setState(State s);
     QString resolveExePath() const;     // "" = 못 찾음
+    QString portableConfigDir() const;  // <obsRoot>/config/obs-studio ("" = 못 찾음)
+    void  cleanObsCrashState();         // 기동 전: 잔존 sentinel 제거 + ConfirmOnExit 해제
     void  scheduleRestart();
     void  hideObsMainWindow();          // Win32 (#ifdef _WIN32)
+    void  closeProjectorWindows();      // Win32: 메인창 제외 가시 top-level 창 닫기
     void  openProgramProjector();       // best-effort
 
     ObsConfig  m_cfg;            // 값 복사 (Settings 수명과 분리)
@@ -77,6 +85,7 @@ private:
     int   m_restartCount   = 0;
     int   m_hbFailStreak   = 0;
     qint64 m_pid           = 0;
+    void* m_mainHwnd       = nullptr;     // 숨긴 OBS 메인창 HWND (프로젝터 식별용)
 
     static constexpr int kConnectIntervalMs = 500;
     static constexpr int kConnectTimeoutMs  = 25000;  // priming 포함 넉넉히
