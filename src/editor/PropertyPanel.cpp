@@ -12,6 +12,7 @@
 #include <QDoubleSpinBox>
 #include <QComboBox>
 #include <QPushButton>
+#include <QVariant>
 
 namespace uwp {
 
@@ -19,10 +20,10 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     : QWidget(parent)
     , m_model(model)
 {
-    auto* title = new QLabel("Property Panel");
+    auto* title = new QLabel("속성");
     title->setStyleSheet("font-weight: bold;");
 
-    m_media = new QLabel("(no selection)");
+    m_media = new QLabel("(선택된 레이어 없음)");
     m_media->setWordWrap(true);
     m_media->setStyleSheet("color:#888;");
 
@@ -45,39 +46,42 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     m_opacity->setDecimals(2);
 
     m_display = mkSpin(0, 86400);
-    m_display->setSuffix(" s");
+    m_display->setSuffix(" 초");
 
     m_endAction = new QComboBox;
-    m_endAction->addItems({ "loop", "stop", "hold", "next" });
+    m_endAction->addItem("반복 재생",         QVariant::fromValue(EndAction::Loop));
+    m_endAction->addItem("정지",              QVariant::fromValue(EndAction::Stop));
+    m_endAction->addItem("마지막 화면 유지",  QVariant::fromValue(EndAction::Hold));
+    m_endAction->addItem("다음 프로그램으로", QVariant::fromValue(EndAction::Next));
 
     auto* geo = new QGridLayout;
-    geo->addWidget(new QLabel("X"), 0, 0); geo->addWidget(m_x, 0, 1);
-    geo->addWidget(new QLabel("Y"), 0, 2); geo->addWidget(m_y, 0, 3);
-    geo->addWidget(new QLabel("W"), 1, 0); geo->addWidget(m_w, 1, 1);
-    geo->addWidget(new QLabel("H"), 1, 2); geo->addWidget(m_h, 1, 3);
+    geo->addWidget(new QLabel("왼쪽(X)"), 0, 0); geo->addWidget(m_x, 0, 1);
+    geo->addWidget(new QLabel("위(Y)"),   0, 2); geo->addWidget(m_y, 0, 3);
+    geo->addWidget(new QLabel("가로(W)"), 1, 0); geo->addWidget(m_w, 1, 1);
+    geo->addWidget(new QLabel("세로(H)"), 1, 2); geo->addWidget(m_h, 1, 3);
 
-    m_btnFront = new QPushButton("To Front");
-    m_btnRaise = new QPushButton("Raise");
-    m_btnLower = new QPushButton("Lower");
-    m_btnBack  = new QPushButton("To Back");
+    m_btnFront = new QPushButton("맨 앞으로");
+    m_btnRaise = new QPushButton("한 칸 앞으로");
+    m_btnLower = new QPushButton("한 칸 뒤로");
+    m_btnBack  = new QPushButton("맨 뒤로");
     auto* zrow1 = new QHBoxLayout; zrow1->addWidget(m_btnFront); zrow1->addWidget(m_btnRaise);
     auto* zrow2 = new QHBoxLayout; zrow2->addWidget(m_btnLower); zrow2->addWidget(m_btnBack);
 
-    m_btnDelete = new QPushButton("Delete Layer");
+    m_btnDelete = new QPushButton("레이어 삭제");
     m_btnDelete->setStyleSheet("color:#c33;");
 
     auto* form = new QFormLayout;
-    form->addRow("Media", m_media);
-    form->addRow("Name",  m_name);
-    form->addRow("Geometry", geo);
-    form->addRow("Opacity",  m_opacity);
-    form->addRow("Display",  m_display);
-    form->addRow("End",      m_endAction);
+    form->addRow("미디어", m_media);
+    form->addRow("이름",  m_name);
+    form->addRow("위치 / 크기", geo);
+    form->addRow("투명도",  m_opacity);
+    form->addRow("표시 시간",  m_display);
+    form->addRow("재생 끝나면",  m_endAction);
 
     auto* root = new QVBoxLayout(this);
     root->addWidget(title);
     root->addLayout(form);
-    root->addWidget(new QLabel("Z-order"));
+    root->addWidget(new QLabel("표시 순서"));
     root->addLayout(zrow1);
     root->addLayout(zrow2);
     root->addSpacing(8);
@@ -128,7 +132,7 @@ void PropertyPanel::setEnabledAll(bool on) {
 void PropertyPanel::onSelectionChanged(const QString& id) {
     m_id = id;
     if (id.isEmpty()) {
-        m_media->setText("(no selection)");
+        m_media->setText("(선택된 레이어 없음)");
         setEnabledAll(false);
         return;
     }
@@ -152,7 +156,8 @@ void PropertyPanel::loadFrom(const QString& id) {
     m_h->setValue(qRound(l->geometry.height()));
     m_opacity->setValue(l->opacity);
     m_display->setValue(l->displayTimeSec);
-    m_endAction->setCurrentText(endActionToString(l->endAction));
+    const int eaIdx = m_endAction->findData(QVariant::fromValue(l->endAction));
+    if (eaIdx >= 0) m_endAction->setCurrentIndex(eaIdx);
     m_loading = false;
 }
 
@@ -174,7 +179,7 @@ void PropertyPanel::commitDisplayTime(int v) {
 
 void PropertyPanel::commitEndAction(int idx) {
     if (m_loading || m_id.isEmpty() || idx < 0) return;
-    m_model->setEndAction(m_id, endActionFromString(m_endAction->itemText(idx)));
+    m_model->setEndAction(m_id, m_endAction->itemData(idx).value<EndAction>());
 }
 
 void PropertyPanel::commitName() {

@@ -2,6 +2,7 @@
 
 #include <QString>
 #include <QRectF>
+#include <QMetaType>
 
 namespace uwp {
 
@@ -30,3 +31,7 @@ struct Layer {
 };
 
 } // namespace uwp
+
+// EndAction 을 QVariant(userData)에 담기 위해 Qt 메타시스템에 등록.
+// (PropertyPanel 콤보박스가 한글 표시텍스트와 enum 값을 분리 보관)
+Q_DECLARE_METATYPE(uwp::EndAction)
