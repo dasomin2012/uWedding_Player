@@ -2,6 +2,7 @@
 
 #include "windows/ControlWindow.h"
 #include "windows/LiveWindow.h"
+#include "live/ILiveSink.h"
 #include "player/LivePlayerPool.h"
 #include "player/SnapshotCache.h"
 #include "scene/SceneModel.h"
@@ -25,8 +26,10 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QFileDialog>
+#include <QImage>
 #include <QInputDialog>
 #include <QMessageBox>
+#include <QPointer>
 #include <QScreen>
 #include <QStatusBar>
 #include <QStringList>
@@ -67,6 +70,15 @@ QString Application::dataDir() const {
 
 QString Application::resolveProgramsPath() const {
     return dataDir() + "/programs.json";       // D3: settings.json 과 분리
+}
+
+// LiveMirror: 현재 활성 sink 반환. 폴백 상태(m_qtFallbackActive)까지 반영.
+ILiveSink* Application::currentLiveSink() const {
+#if defined(UWP_HAS_OBS)
+    if (m_obsBackend && !m_qtFallbackActive)
+        return static_cast<ILiveSink*>(m_obsBackend.get());
+#endif
+    return static_cast<ILiveSink*>(m_liveWindow.get());
 }
 
 // Phase 5c: program 인식 룩업.
@@ -172,6 +184,26 @@ bool Application::initialize() {
     m_programAdvanceTimer->setSingleShot(true);
     connect(m_programAdvanceTimer, &QTimer::timeout,
             this, &Application::onProgramAdvance);
+
+    // LiveMirror — ControlWindow 우상단 "Live 송출" 미러 폴러.
+    //   qt 백엔드: LiveWindow(Win32 PrintWindow) — 동기, 매 400ms 캡처.
+    //   obs 백엔드: GetSourceScreenshot — 비동기, 응답 도착 후 다음 요청.
+    // 요청/응답 상관: 백엔드가 소멸해도 콜백에서 QPointer 로 ControlWindow
+    // 유효성 확인 후 반영(수명 안전).
+    m_liveMirrorTimer = new QTimer(this);
+    m_liveMirrorTimer->setInterval(400);
+    QPointer<ControlWindow> ctrl = m_controlWindow.get();
+    connect(m_liveMirrorTimer, &QTimer::timeout, this, [this, ctrl]() {
+        if (m_liveMirrorInFlight) return;
+        ILiveSink* sink = currentLiveSink();
+        if (!sink || !ctrl) return;
+        m_liveMirrorInFlight = true;
+        sink->requestMirrorSnapshot(320, [this, ctrl](const QImage& img) {
+            m_liveMirrorInFlight = false;
+            if (ctrl) ctrl->setLiveMirrorImage(img);
+        });
+    });
+    m_liveMirrorTimer->start();
 
     // ----- 송출 백엔드 선택 (engine: qt | obs) -----
     ILiveSink* sink   = m_liveWindow.get();

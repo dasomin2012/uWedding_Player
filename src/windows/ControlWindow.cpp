@@ -13,9 +13,11 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QImage>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QPixmap>
 #include <QPushButton>
 #include <QSettings>
 #include <QSlider>
@@ -600,6 +602,17 @@ void ControlWindow::toggleTheme() {
 
 void ControlWindow::setStatusText(const QString& text) {
     statusBar()->showMessage(text);
+}
+
+// LiveMirror: 폴링된 프레임을 우상단 Live 패널에 반영.
+//   - 빈 이미지는 무시(이전 프레임 유지 → 링크 끊길 때 시각적 안정성).
+//   - QLabel 크기에 맞춰 aspect-fit 스케일. 원본 색공간(RGB32/PNG) 그대로.
+void ControlWindow::setLiveMirrorImage(const QImage& img) {
+    if (!m_liveMirror || img.isNull()) return;
+    const QSize labelSize = m_liveMirror->size();
+    if (labelSize.width() <= 0 || labelSize.height() <= 0) return;
+    m_liveMirror->setPixmap(QPixmap::fromImage(img).scaled(
+        labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 } // namespace uwp

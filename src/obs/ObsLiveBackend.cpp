@@ -3,11 +3,13 @@
 #include "ObsClient.h"
 #include "ObsProcessManager.h"
 
-#include <QJsonArray>
-#include <QDir>
-#include <QFileInfo>
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QDebug>
+#include <QDir>
+#include <QFileInfo>
+#include <QImage>
+#include <QJsonArray>
 
 #include <memory>
 
@@ -418,6 +420,47 @@ void ObsLiveBackend::onObsEvent(const QString& eventType,
         }
         emit transitionEnded();
     }
+}
+
+// ---- Live 미러 스냅샷 -------------------------------------------
+// obs-websocket v5 GetSourceScreenshot 는 씬(또는 소스)의 합성 결과를
+// base64 이미지로 리턴한다. 첫 transition 전에는 m_programScene 이 비므로
+// 시딩된 sceneA 로 폴백(안 시딩 상태면 빈 이미지).
+void ObsLiveBackend::requestMirrorSnapshot(int maxWidthPx, MirrorCallback cb) {
+    if (!cb) return;
+
+    ObsClient* c = client();
+    if (!c || !c->isReady() || !m_seeded) { cb(QImage{}); return; }
+
+    QString scene = m_programScene;
+    if (scene.isEmpty()) scene = m_sceneA;
+    if (scene.isEmpty()) { cb(QImage{}); return; }
+
+    const int w = qBound(16, maxWidthPx, 4096);
+
+    QJsonObject req{
+        { QStringLiteral("sourceName"),  scene },
+        { QStringLiteral("imageFormat"), QStringLiteral("png") },
+        { QStringLiteral("imageWidth"),  w },
+    };
+    c->request(QStringLiteral("GetSourceScreenshot"), req,
+        [cb](bool ok, const QJsonObject& data, const QString& comment) {
+            if (!ok) {
+                // 조용히 빈 이미지 — 폴러가 다음 틱에 재시도(스팸 로그 방지)
+                Q_UNUSED(comment);
+                cb(QImage{});
+                return;
+            }
+            // v5: "imageData" = "data:image/png;base64,...."
+            QString s = data.value(QStringLiteral("imageData")).toString();
+            const int comma = s.indexOf(',');
+            if (comma >= 0) s = s.mid(comma + 1);
+            const QByteArray bytes =
+                QByteArray::fromBase64(s.toLatin1());
+            QImage img;
+            img.loadFromData(bytes, "PNG");
+            cb(img);
+        });
 }
 
 } // namespace uwp

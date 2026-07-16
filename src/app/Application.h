@@ -18,6 +18,7 @@ class SceneModel;
 class TakeController;
 class NovaStarController;
 class ProgramRepository;
+class ILiveSink;
 #if defined(UWP_HAS_OBS)
 class ObsProcessManager;
 class ObsLiveBackend;
@@ -101,6 +102,11 @@ private:
 
     // Phase 5c — program 자동 진행 타이머 (displayTimeSec 만료).
     QTimer* m_programAdvanceTimer = nullptr;
+
+    // LiveMirror — 우상단 "Live 송출" 미러 폴링 (qt/obs 자동 분기).
+    QTimer* m_liveMirrorTimer = nullptr;
+    bool    m_liveMirrorInFlight = false;   // obs 비동기 응답 대기 중 중복 방지
+    ILiveSink* currentLiveSink() const;     // engine + fallback 반영
 };
 
 } // namespace uwp

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QImage>
 #include <QVector>
 #include <functional>
 
@@ -31,6 +32,16 @@ public:
     // 위젯 기반 백엔드만 자신을 반환하고, OBS 등 비위젯 백엔드는
     // nullptr 을 반환한다(TransitionEffect 가 즉시 apply 로 폴백).
     virtual QWidget* transitionAnchor() = 0;
+
+    // Live 미러(ControlWindow 우상단) 정지화상 요청.
+    //   maxWidthPx : 미러 표시 폭(장축). 백엔드는 이 폭 이하로 스케일하여 반환.
+    //   cb         : 결과 콜백. 실패 시 QImage() 로 1회 호출. 미지원 백엔드는
+    //                기본 구현이 즉시 QImage() 로 호출한다.
+    // qt 백엔드: 동기 (Win32 PrintWindow), obs 백엔드: 비동기 (websocket).
+    using MirrorCallback = std::function<void(const QImage&)>;
+    virtual void requestMirrorSnapshot(int /*maxWidthPx*/, MirrorCallback cb) {
+        if (cb) cb(QImage{});
+    }
 };
 
 } // namespace uwp

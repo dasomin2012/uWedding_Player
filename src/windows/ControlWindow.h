@@ -9,6 +9,7 @@ class QPushButton;
 class QComboBox;
 class QSlider;
 class QAction;
+class QImage;
 
 namespace uwp {
 
@@ -36,6 +37,10 @@ public:
 
 public slots:
     void setStatusText(const QString& text);
+
+    // LiveMirror: Application 이 폴링한 프레임을 우상단 "Live 송출" 패널로.
+    // 빈 QImage 는 무시(직전 프레임 유지).
+    void setLiveMirrorImage(const QImage& img);
 
 public:
     ProgramListWidget* programList()  const { return m_programList; }  // Application 와이어링용

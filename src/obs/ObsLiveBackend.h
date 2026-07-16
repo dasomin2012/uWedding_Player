@@ -41,6 +41,11 @@ public:
                     std::function<void()> onCommitted = {}) override;
     QWidget* transitionAnchor() override { return nullptr; }  // 비위젯
 
+    // Live 미러 스냅샷 — obs-websocket GetSourceScreenshot 로 현재 program 씬을
+    // base64 PNG 로 받아 QImage 로 디코드 (비동기).
+    // 미준비/미시딩 상태에서는 QImage() 로 콜백.
+    void requestMirrorSnapshot(int maxWidthPx, MirrorCallback cb) override;
+
 signals:
     void transitionEnded();   // O5 NovaStar 동기 지점
 

@@ -37,6 +37,11 @@ public:
 
     QWidget* transitionAnchor() override { return this; }
 
+    // Live 미러 스냅샷 — Win32 PrintWindow(PW_RENDERFULLCONTENT)로 VLC HWND
+    // 포함 전체 클라이언트 영역을 캡처 후 maxWidthPx 이하로 스케일.
+    // 동기 실행이지만 콜백 시그니처는 obs 백엔드와 동일하게 유지.
+    void requestMirrorSnapshot(int maxWidthPx, MirrorCallback cb) override;
+
     bool playVideo(const QString& path);   // 단일 전체화면 영상 레이어
     void stopVideo();
 
