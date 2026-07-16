@@ -32,7 +32,8 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     // ----- 위치 / 크기 -----
     m_btnFill = new QPushButton("꽉 채우기");
     m_btnFill->setMinimumHeight(36);
-    m_btnFill->setStyleSheet("background:#cfe2ff; font-weight:bold;");
+    // 테마별 색상은 ControlWindow QSS 에서 QPushButton#FillButton 규칙으로 적용.
+    m_btnFill->setObjectName("FillButton");
 
     auto mkSpin = [](int lo, int hi) {
         auto* s = new QSpinBox;

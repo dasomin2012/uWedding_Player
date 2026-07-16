@@ -1,11 +1,14 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QString>
 
 class QLabel;
 class QWidget;
 class QPushButton;
 class QComboBox;
+class QSlider;
+class QAction;
 
 namespace uwp {
 
@@ -50,6 +53,9 @@ signals:
 private:
     void createMenus();
     void createCentralLayout();
+    QWidget* buildGlobalBar();          // 하단 F2B / TAKE / 전환 / BGM
+    void applyTheme(const QString& theme);   // "light" | "dark" — QSS 적용
+    void toggleTheme();                      // 다크 모드 토글 (Tools 메뉴)
 
     Settings*        m_settings   = nullptr;
     SceneModel*      m_scene      = nullptr;
@@ -62,6 +68,15 @@ private:
     QPushButton*       m_takeButton = nullptr;
     QComboBox*         m_takeMode   = nullptr;
     ProgramListWidget* m_programList = nullptr;
+
+    // UI-A: 하단 GlobalBar (F2B / BGM 슬라이더 placeholder)
+    QWidget*     m_globalBar   = nullptr;
+    QPushButton* m_btnFbtb     = nullptr;
+    QSlider*     m_bgmSlider   = nullptr;
+
+    // UI-B: 다크 모드
+    QAction*     m_darkThemeAct = nullptr;
+    QString      m_currentTheme = "light";
 };
 
 } // namespace uwp
