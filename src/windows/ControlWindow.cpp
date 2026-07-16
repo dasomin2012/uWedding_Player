@@ -9,7 +9,6 @@
 
 #include <QAction>
 #include <QApplication>
-#include <QComboBox>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -20,7 +19,6 @@
 #include <QPixmap>
 #include <QPushButton>
 #include <QSettings>
-#include <QSlider>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QToolBar>
@@ -58,12 +56,6 @@ QLabel#PanelHeader {
     border-bottom: 1px solid #ece4d6;
     margin-bottom: 6px;
 }
-QFrame#GlobalBar {
-    background: #fdfaf5;
-    border: 1px solid #dcd3c6;
-    border-radius: 12px;
-}
-
 QPushButton {
     background: #ffffff;
     border: 1px solid #d3c8b8;
@@ -80,24 +72,26 @@ QPushButton#TakeButton {
     color: #ffffff;
     border: 0;
     border-radius: 8px;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 800;
-    padding: 12px 32px;
+    padding: 14px 28px;
     letter-spacing: 0.08em;
 }
 QPushButton#TakeButton:hover { background: #b23629; }
 QPushButton#TakeButton:pressed { background: #7d1f16; }
 
-QPushButton#FbtbButton {
-    background: #171310;
-    color: #f0e8dd;
+QPushButton#TransButton {
+    background: #3d342d;
+    color: #f5ede0;
     border: 0;
     border-radius: 8px;
+    font-size: 15px;
     font-weight: 700;
-    padding: 10px 18px;
-    letter-spacing: 0.05em;
+    padding: 14px 20px;
+    letter-spacing: 0.06em;
 }
-QPushButton#FbtbButton:hover { background: #2d2620; }
+QPushButton#TransButton:hover  { background: #4d423a; }
+QPushButton#TransButton:pressed { background: #2a2320; }
 
 QPushButton#FillButton {
     background: #8a5a3b;
@@ -237,12 +231,6 @@ QLabel#PanelHeader {
     border-bottom: 1px solid #2c2620;
     margin-bottom: 6px;
 }
-QFrame#GlobalBar {
-    background: #1e1a17;
-    border: 1px solid #2c2620;
-    border-radius: 12px;
-}
-
 QPushButton {
     background: #26211c;
     border: 1px solid #3a322c;
@@ -259,24 +247,26 @@ QPushButton#TakeButton {
     color: #ffffff;
     border: 0;
     border-radius: 8px;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 800;
-    padding: 12px 32px;
+    padding: 14px 28px;
     letter-spacing: 0.08em;
 }
 QPushButton#TakeButton:hover { background: #e64535; }
 QPushButton#TakeButton:pressed { background: #b02818; }
 
-QPushButton#FbtbButton {
-    background: #08070a;
-    color: #e8ddd0;
-    border: 1px solid #1c1815;
+QPushButton#TransButton {
+    background: #c8a37a;
+    color: #14100c;
+    border: 0;
     border-radius: 8px;
+    font-size: 15px;
     font-weight: 700;
-    padding: 10px 18px;
-    letter-spacing: 0.05em;
+    padding: 14px 20px;
+    letter-spacing: 0.06em;
 }
-QPushButton#FbtbButton:hover { background: #16130f; }
+QPushButton#TransButton:hover  { background: #d6b48e; }
+QPushButton#TransButton:pressed { background: #a88760; }
 
 QPushButton#FillButton {
     background: #c8a37a;
@@ -518,44 +508,39 @@ void ControlWindow::createCentralLayout() {
     m_liveMirror->setAlignment(Qt::AlignCenter);
     m_liveMirror->setMinimumSize(240, 135);   // 16:9 mini
 
-    // ----- Programs (기존 위젯 재사용; UI-C/D 에서 카드형으로 교체 예정) -----
+    // ----- Programs (UI-C 카드형) -----
     m_programList = new ProgramListWidget;
-    m_programList->setMinimumHeight(140);
+    m_programList->setMinimumHeight(200);   // 카드 세로(172) + 여유
 
     // ----- Property Panel -----
     m_property = new PropertyPanel(m_scene);
 
-    // ----- TAKE 버튼 + 전환 콤보 (하단 GlobalBar 로 이동) -----
+    // ----- UI-C: TAKE 클러스터 (Live 미러 아래 배치) -----
     m_takeButton = new QPushButton(tr("TAKE"));
     m_takeButton->setObjectName("TakeButton");
-    m_takeButton->setMinimumSize(200, 52);
+    m_takeButton->setMinimumHeight(52);
     connect(m_takeButton, &QPushButton::clicked,
             this, &ControlWindow::takeRequested);
 
-    m_takeMode = new QComboBox;
-    m_takeMode->addItems({ "cut", "fade" });
-    m_takeMode->setMinimumWidth(90);
+    // 전환 모드 토글 — 한 버튼으로 Fade ↔ Cut. 라벨 = 현재 모드.
+    // TAKE 와 동일한 세로 높이 + 유사 스타일(TransButton QSS), 폭은 컴팩트.
+    m_btnTransition = new QPushButton;
+    m_btnTransition->setObjectName("TransButton");
+    m_btnTransition->setMinimumHeight(52);
+    m_btnTransition->setMinimumWidth(90);
     {
         const QString dm = m_settings ? m_settings->takeDefaultMode().toLower()
                                       : QString("fade");
-        m_takeMode->setCurrentText(dm == "cut" ? "cut" : "fade");
+        m_btnTransition->setText(dm == "cut" ? QStringLiteral("Cut")
+                                             : QStringLiteral("Fade"));
     }
-    connect(m_takeMode, &QComboBox::currentTextChanged,
-            this, &ControlWindow::takeModeChanged);
-
-    // ----- F2B 버튼 + BGM 슬라이더 (placeholder) -----
-    m_btnFbtb = new QPushButton(tr("⬛ 검정 (F2B)"));
-    m_btnFbtb->setObjectName("FbtbButton");
-    m_btnFbtb->setMinimumWidth(140);
-    m_btnFbtb->setEnabled(false);   // UI-A: 자리만 확보, 동작은 후속 단계
-    m_btnFbtb->setToolTip(tr("응급 검은 화면 송출 (구현 예정)"));
-
-    m_bgmSlider = new QSlider(Qt::Horizontal);
-    m_bgmSlider->setRange(0, 100);
-    m_bgmSlider->setValue(70);
-    m_bgmSlider->setFixedWidth(140);
-    m_bgmSlider->setEnabled(false);   // UI-A: 자리만 확보, BGM 파이프라인은 후속
-    m_bgmSlider->setToolTip(tr("BGM 볼륨 (구현 예정)"));
+    m_btnTransition->setToolTip(tr("클릭하여 전환 모드 바꾸기 (Fade ↔ Cut)"));
+    connect(m_btnTransition, &QPushButton::clicked, this, [this]() {
+        const bool isFade = (m_btnTransition->text() == QLatin1String("Fade"));
+        const QString next     = isFade ? QStringLiteral("Cut") : QStringLiteral("Fade");
+        m_btnTransition->setText(next);
+        emit takeModeChanged(next.toLower());
+    });
 
     // ----- 컬럼 조립 -----
 
@@ -573,10 +558,10 @@ void ControlWindow::createCentralLayout() {
     centerCol->addWidget(programPanel);
     centerCol->setStretchFactor(0, 3);
     centerCol->setStretchFactor(1, 1);
-    centerCol->setSizes({ 620, 200 });
+    centerCol->setSizes({ 560, 240 });
 
-    // RIGHT TOP: Live mirror
-    auto* livePanel = wrapPanel(m_liveMirror, tr("Live 송출"));
+    // RIGHT TOP: Live mirror + TAKE 클러스터
+    auto* livePanel = wrapPanel(buildLivePanel(), tr("Live 송출"));
 
     // RIGHT BOTTOM: Property (자체 헤더 있음)
     auto* propPanel = wrapPanel(m_property);
@@ -586,7 +571,7 @@ void ControlWindow::createCentralLayout() {
     rightCol->addWidget(propPanel);
     rightCol->setStretchFactor(0, 0);
     rightCol->setStretchFactor(1, 1);
-    rightCol->setSizes({ 220, 600 });
+    rightCol->setSizes({ 340, 500 });
 
     // OUTER: 3-column horizontal splitter
     auto* outer = new QSplitter(Qt::Horizontal);
@@ -596,10 +581,7 @@ void ControlWindow::createCentralLayout() {
     outer->setStretchFactor(0, 0);
     outer->setStretchFactor(1, 1);
     outer->setStretchFactor(2, 0);
-    outer->setSizes({ 260, 940, 320 });
-
-    // GlobalBar
-    m_globalBar = buildGlobalBar();
+    outer->setSizes({ 260, 940, 340 });
 
     // ROOT
     auto* central = new QWidget(this);
@@ -608,49 +590,26 @@ void ControlWindow::createCentralLayout() {
     root->setContentsMargins(6, 6, 6, 6);
     root->setSpacing(6);
     root->addWidget(outer, 1);
-    root->addWidget(m_globalBar);
     setCentralWidget(central);
 }
 
-QWidget* ControlWindow::buildGlobalBar() {
-    auto* bar = new QFrame;
-    bar->setObjectName("GlobalBar");
-    auto* h = new QHBoxLayout(bar);
-    h->setContentsMargins(14, 10, 14, 10);
-    h->setSpacing(14);
+// UI-C: 우측 상단 Live 패널 조립. mirror 위, TAKE + 전환 토글 아래(한 줄).
+QWidget* ControlWindow::buildLivePanel() {
+    auto* box = new QWidget;
+    auto* v = new QVBoxLayout(box);
+    v->setContentsMargins(0, 0, 0, 0);
+    v->setSpacing(8);
+    v->addWidget(m_liveMirror, 1);
 
-    // 좌: F2B
-    h->addWidget(m_btnFbtb);
+    // [       TAKE       ] [Fade/Cut] — TAKE 는 늘어남, 전환 버튼은 컴팩트.
+    auto* row = new QHBoxLayout;
+    row->setSpacing(6);
+    row->setContentsMargins(0, 0, 0, 0);
+    row->addWidget(m_takeButton, 1);
+    row->addWidget(m_btnTransition);
+    v->addLayout(row);
 
-    // 좌우 균형용 스트레치
-    h->addStretch(1);
-
-    // 중앙: TAKE + 안내 라벨
-    auto* takeCol = new QVBoxLayout;
-    takeCol->setSpacing(2);
-    takeCol->setContentsMargins(0, 0, 0, 0);
-    auto* takeHint = new QLabel(tr("Preview → Live 로 송출"));
-    takeHint->setAlignment(Qt::AlignCenter);
-    takeHint->setStyleSheet("color: palette(mid); font-size: 11px;");
-    takeCol->addWidget(takeHint);
-    takeCol->addWidget(m_takeButton, 0, Qt::AlignCenter);
-    h->addLayout(takeCol);
-
-    h->addStretch(1);
-
-    // 우: 전환 콤보
-    auto* transLabel = new QLabel(tr("전환"));
-    transLabel->setStyleSheet("color: palette(mid);");
-    h->addWidget(transLabel);
-    h->addWidget(m_takeMode);
-
-    // 우: BGM
-    auto* bgmLabel = new QLabel(tr("🎵 BGM"));
-    bgmLabel->setStyleSheet("color: palette(mid);");
-    h->addWidget(bgmLabel);
-    h->addWidget(m_bgmSlider);
-
-    return bar;
+    return box;
 }
 
 // ---- UI-B: 테마 적용 / 토글 ----------------------------------------

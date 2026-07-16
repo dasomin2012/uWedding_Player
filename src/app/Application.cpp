@@ -243,9 +243,21 @@ bool Application::initialize() {
         m_scene.get(), sink, &m_settings);
     connect(m_controlWindow.get(), &ControlWindow::takeRequested,
             m_takeController.get(), &TakeController::take);
-    // 수동 TAKE → 진행중 자동 진행 중단(운용자 수동 제어 우선, §R5/4.3).
+    // 수동 TAKE →
+    //   1) 진행중 자동 진행 중단(운용자 수동 제어 우선, §R5/4.3)
+    //   2) UI-C: 프로그램이 Preview 로드된 상태였다면 그 program 을 "재생중" 으로
+    //      확정 + 자동 진행 timer 재무장. (더블클릭이 더는 Play 를 유발하지 않으므로
+    //      TAKE 가 Play 트리거 역할을 겸함.)
     connect(m_controlWindow.get(), &ControlWindow::takeRequested, this, [this]() {
         if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
+        if (m_editProgramId.isEmpty() || !m_programs) return;
+        const Program* p = m_programs->find(m_editProgramId);
+        if (!p) return;
+        m_currentProgramId = m_editProgramId;
+        if (auto* pl = m_controlWindow->programList())
+            pl->setActiveProgram(m_currentProgramId);
+        if (p->displayTimeSec > 0 && m_programAdvanceTimer)
+            m_programAdvanceTimer->start(p->displayTimeSec * 1000);
     });
     connect(m_controlWindow.get(), &ControlWindow::takeModeChanged,
             this, [this](const QString& mode) {

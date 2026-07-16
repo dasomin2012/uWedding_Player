@@ -6,8 +6,6 @@
 class QLabel;
 class QWidget;
 class QPushButton;
-class QComboBox;
-class QSlider;
 class QAction;
 class QImage;
 
@@ -58,7 +56,7 @@ signals:
 private:
     void createMenus();
     void createCentralLayout();
-    QWidget* buildGlobalBar();          // 하단 F2B / TAKE / 전환 / BGM
+    QWidget* buildLivePanel();              // Live mirror + TAKE 클러스터
     void applyTheme(const QString& theme);   // "light" | "dark" — QSS 적용
     void toggleTheme();                      // 다크 모드 토글 (Tools 메뉴)
 
@@ -70,14 +68,13 @@ private:
     PreviewCanvas*   m_canvas     = nullptr;
     PropertyPanel*   m_property   = nullptr;
     QLabel*            m_liveMirror = nullptr;
-    QPushButton*       m_takeButton = nullptr;
-    QComboBox*         m_takeMode   = nullptr;
     ProgramListWidget* m_programList = nullptr;
 
-    // UI-A: 하단 GlobalBar (F2B / BGM 슬라이더 placeholder)
-    QWidget*     m_globalBar   = nullptr;
-    QPushButton* m_btnFbtb     = nullptr;
-    QSlider*     m_bgmSlider   = nullptr;
+    // UI-C: TAKE 클러스터 (Live mirror 아래)
+    //  검정 화면은 별도 버튼 없이 "빈 프로그램(레이어 0개)"을 TAKE 로 실행 —
+    //  applyScene({}) 가 LiveWindow 검정 배경을 그대로 보여준다.
+    QPushButton*  m_takeButton      = nullptr;   // TAKE (큰 빨간 버튼)
+    QPushButton*  m_btnTransition   = nullptr;   // Fade ↔ Cut 토글 (한 버튼)
 
     // UI-B: 다크 모드
     QAction*     m_darkThemeAct = nullptr;
