@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 #include <QSize>
 
 namespace uwp {
@@ -30,6 +31,7 @@ class Settings {
 public:
     bool load(const QString& path);
     bool save(const QString& path) const;
+    bool save() const;                 // 마지막 load/save 경로에 저장
 
     // ----- Canvas -----
     int   canvasWidth()  const { return m_canvasWidth; }
@@ -70,6 +72,11 @@ public:
     void    setMediaDir(const QString& d) { m_mediaDir = d; }
     QString sceneScratch()  const { return m_sceneScratch; }   // 작업 씬 파일
 
+    // Media Files 패널에 기억할 소스(파일 또는 폴더 경로) 목록.
+    // 다음 실행 시 복원 — 폴더는 재스캔, 파일은 그대로 추가.
+    QStringList mediaSources() const { return m_mediaSources; }
+    void        setMediaSources(const QStringList& s) { m_mediaSources = s; }
+
     // ----- Phase 1 전용: 테스트 영상 -----
     QString testVideoPath() const { return m_testVideoPath; }
     void    setTestVideoPath(const QString& p) { m_testVideoPath = p; }
@@ -90,6 +97,8 @@ private:
     QString m_snapshotCacheDir    = "data/cache";
     QString m_mediaDir;                                 // 마지막 미디어 폴더
     QString m_sceneScratch        = "data/scene.json";
+    QStringList m_mediaSources;                         // Media Files 패널 기억 소스
+    mutable QString m_loadedPath;                       // 마지막 load/save 경로
 };
 
 } // namespace uwp

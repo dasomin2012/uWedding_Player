@@ -9,6 +9,7 @@
 namespace uwp {
 
 bool Settings::load(const QString& path) {
+    m_loadedPath = path;   // save() 무인자 호출이 같은 경로를 쓰도록 기억
     QFile f(path);
     if (!f.exists()) {
         return false;
@@ -45,6 +46,13 @@ bool Settings::load(const QString& path) {
     m_mediaDir               = s.value("media_dir").toString(m_mediaDir);
     m_sceneScratch           = s.value("scene_scratch").toString(m_sceneScratch);
 
+    m_mediaSources.clear();
+    const QJsonArray msrc = s.value("media_sources").toArray();
+    for (const QJsonValue& v : msrc) {
+        const QString p = v.toString();
+        if (!p.isEmpty()) m_mediaSources << p;
+    }
+
     const QJsonObject nova   = s.value("novastar").toObject();
     m_novaStar.enabled         = nova.value("enabled").toBool(m_novaStar.enabled);
     m_novaStar.host            = nova.value("host").toString(m_novaStar.host);
@@ -66,7 +74,16 @@ bool Settings::load(const QString& path) {
     return true;
 }
 
+bool Settings::save() const {
+    if (m_loadedPath.isEmpty()) {
+        qWarning() << "Settings::save: no path remembered";
+        return false;
+    }
+    return save(m_loadedPath);
+}
+
 bool Settings::save(const QString& path) const {
+    m_loadedPath = path;
     QJsonObject canvas;
     canvas["width"]  = m_canvasWidth;
     canvas["height"] = m_canvasHeight;
@@ -97,6 +114,10 @@ bool Settings::save(const QString& path) const {
     s["snapshot_cache_dir"]      = m_snapshotCacheDir;
     s["media_dir"]               = m_mediaDir;
     s["scene_scratch"]           = m_sceneScratch;
+
+    QJsonArray msrc;
+    for (const QString& p : m_mediaSources) msrc.append(p);
+    s["media_sources"]           = msrc;
     s["novastar"]                = nova;
     s["engine"]                  = m_engine;
     s["obs"]                     = obs;
