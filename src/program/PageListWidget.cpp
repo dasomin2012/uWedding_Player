@@ -264,9 +264,10 @@ void PageListWidget::showContextMenu(const QPoint& pos) {
     const QString name = it->text();
 
     QMenu menu(this);
-    QAction* renameAct = menu.addAction(tr("이름 변경..."));
-    QAction* upAct     = menu.addAction(tr("위로"));
-    QAction* downAct   = menu.addAction(tr("아래로"));
+    QAction* renameAct  = menu.addAction(tr("이름 변경..."));
+    QAction* displayAct = menu.addAction(tr("표시 시간 설정..."));
+    QAction* upAct      = menu.addAction(tr("위로"));
+    QAction* downAct    = menu.addAction(tr("아래로"));
 
     QAction* chosen = menu.exec(m_list->viewport()->mapToGlobal(pos));
     if (chosen == renameAct) {
@@ -276,6 +277,8 @@ void PageListWidget::showContextMenu(const QPoint& pos) {
             tr("이름 (빈 값이면 순번 표시):"),
             QLineEdit::Normal, name, &ok);
         if (ok) emit renameRequested(id, nn);
+    } else if (chosen == displayAct) {
+        emit displayTimeEditRequested(id);
     } else if (chosen == upAct) {
         emit moveUpRequested(id);
     } else if (chosen == downAct) {

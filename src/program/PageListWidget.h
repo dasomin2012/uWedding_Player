@@ -38,6 +38,9 @@ signals:
     void renameRequested(const QString& id, const QString& newName);
     void moveUpRequested(const QString& id);
     void moveDownRequested(const QString& id);
+    // 페이지 단위 표시 시간(자동 진행 초) 편집 요청 — Application 이 현재값
+    // 조회 후 QInputDialog::getInt 팝업.
+    void displayTimeEditRequested(const QString& id);
 
 private:
     void showContextMenu(const QPoint& pos);

@@ -18,6 +18,7 @@ class SceneModel;
 class TakeController;
 class NovaStarController;
 class ProgramRepository;
+struct Program;   // UI-D Phase C — playPageAt 시그니처가 사용
 class ILiveSink;
 #if defined(UWP_HAS_OBS)
 class ObsProcessManager;
@@ -63,6 +64,8 @@ private slots:
     void onPageRenameRequested(const QString& pageId, const QString& newName);
     void onPageMoveUpRequested(const QString& pageId);
     void onPageMoveDownRequested(const QString& pageId);
+    // UI-D Phase C — 페이지별 표시 시간 편집.
+    void onPageDisplayTimeEditRequested(const QString& pageId);
 
     // ▶ 미리보기 재생 상태 변화 → 리허설 창 열기/닫기.
     void onPreviewPlayingChanged(bool playing);
@@ -80,10 +83,12 @@ private:
     void persistEditProgram();                       // 편집 대상에 layers+썸네일 저장
     void flushEditSave();                            // 대기중 저장을 즉시 반영
 
-    // Phase 5c — program 재생/자동 진행
-    void playProgram(const QString& id);             // 공통 재생 경로(수동/자동 공용)
-    void onProgramAdvance();                         // displayTime 만료 → endAction 처리
+    // Phase 5c — program 재생/자동 진행 (UI-D: 페이지 단위로 확장됨)
+    void playProgram(const QString& id);             // 첫 페이지부터 재생
+    void onProgramAdvance();                         // 페이지 만료 → 다음 페이지 or program endAction
     void stopProgramPlayback();                      // Stop: Live 클리어 + 타이머 정지
+    // 현재 재생 프로그램의 특정 페이지를 Live 로 송출 + 타이머 무장.
+    void playPageAt(const Program* p, int pageIdx);
     QString currentNovaPresetId() const;            // O5: env > settings.default_preset_id
 #if defined(UWP_HAS_OBS)
     void installQtFallback(const QString& reason);  // O6-A: OBS Failed → qt
@@ -116,6 +121,8 @@ private:
 
     // Phase 5b/5c — 현재 재생중(Play) program id ("" = 없음).
     QString m_currentProgramId;
+    // UI-D Phase C — 재생중 프로그램 내 현재 페이지 인덱스.
+    int     m_currentPageIdx = 0;
 
     // Phase 5b — 현재 편집 대상 program id ("" = 스크래치, 자동저장 안 함).
     QString m_editProgramId;
@@ -127,6 +134,8 @@ private:
     // 리허설 세션이 지금 재생중인 program id. m_editProgramId 와 분리 —
     // 리허설이 Next/First 로 다른 프로그램 재생해도 사용자 편집 대상은 유지.
     QString m_previewProgramId;
+    // UI-D Phase C — 리허설 세션 내 현재 페이지 인덱스.
+    int     m_previewPageIdx = 0;
     QTimer* m_editSaveTimer  = nullptr;   // 편집 자동저장 디바운스
     bool    m_suppressEditSave = false;   // 프로그램 로드 중 모델변경을 편집으로 오인 방지
 

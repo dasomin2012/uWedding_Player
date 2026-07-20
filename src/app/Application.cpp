@@ -213,6 +213,8 @@ bool Application::initialize() {
                 this, &Application::onPageMoveUpRequested);
         connect(pgl, &PageListWidget::moveDownRequested,
                 this, &Application::onPageMoveDownRequested);
+        connect(pgl, &PageListWidget::displayTimeEditRequested,
+                this, &Application::onPageDisplayTimeEditRequested);
     }
     // 부재 시 빈 리스트로 시작(에러 아님). 손상 시 .bak 백업 후 빈 리스트.
     m_programs->load(resolveProgramsPath());
@@ -300,16 +302,19 @@ bool Application::initialize() {
         if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
         if (m_editProgramId.isEmpty() || !m_programs) return;
         const Program* p = m_programs->find(m_editProgramId);
-        if (!p) return;
+        if (!p || p->pages.isEmpty()) return;
         m_currentProgramId = m_editProgramId;
+        // UI-D Phase C: TAKE 는 "현재 편집 페이지"를 Live 로 → 그 페이지부터
+        // 순차 재생 시작. m_currentPageIdx 를 편집 페이지 인덱스로 세팅.
+        int idx = 0;
+        for (int i = 0; i < p->pages.size(); ++i)
+            if (p->pages[i].id == m_editPageId) { idx = i; break; }
+        m_currentPageIdx = idx;
         if (auto* pl = m_controlWindow->programList())
             pl->setActiveProgram(m_currentProgramId);
-        // UI-D Phase A: Program 단위 displayTime 은 페이지 0 값으로 위임.
-        //   Phase C 에서 페이지 순회 지원 시 이 로직 재작성.
-        if (!p->pages.isEmpty()
-            && p->pages.first().displayTimeSec > 0
-            && m_programAdvanceTimer)
-            m_programAdvanceTimer->start(p->pages.first().displayTimeSec * 1000);
+        const int t = p->pages[idx].displayTimeSec;
+        if (t > 0 && m_programAdvanceTimer)
+            m_programAdvanceTimer->start(t * 1000);
     });
     connect(m_controlWindow.get(), &ControlWindow::takeModeChanged,
             this, [this](const QString& mode) {
@@ -668,49 +673,79 @@ void Application::onProgramPlayRequested(const QString& id) {
     playProgram(id);   // 수동 Play → 공통 경로(자동 진행 타이머 포함)
 }
 
-// ---- Phase 5c — 재생 / 자동 진행 -------------------------------
-// 수동 Play 와 자동 진행이 공유하는 단일 경로.
+// ---- Phase 5c + UI-D Phase C — 재생 / 페이지 순회 / 자동 진행 --
+// 수동 Play(카드 자동 선택 후 TAKE) 와 자동 진행이 공유하는 단일 경로.
+// UI-D 이후: 프로그램은 여러 페이지를 순차 재생, 마지막 페이지 종료 시
+//   program.endAction 이 다음 프로그램 여부를 결정.
 void Application::playProgram(const QString& id) {
     flushEditSave();
     const Program* p = m_programs->find(id);
-    if (!p) return;
+    if (!p || p->pages.isEmpty()) return;
 
-    m_suppressEditSave = true;
-    // Phase A: 첫 페이지 layers 만 재생. 페이지 순회는 Phase C.
-    m_scene->replaceAll(p->pages.first().layers);
-    m_suppressEditSave = false;
     m_editProgramId    = id;
     m_currentProgramId = id;            // take 전에 설정 → currentNovaPresetId 정확
-
-    if (m_takeController) m_takeController->take();   // Live 송출 (+ taken→NovaStar)
+    m_editPageId       = p->pages.first().id;
 
     if (auto* pl = m_controlWindow->programList()) {
         pl->setActiveProgram(id);       // 재생중 강조
         pl->selectProgram(id);
     }
-    const int firstPageTime = p->pages.first().displayTimeSec;
-    m_controlWindow->setPreviewDisplayTime(firstPageTime);
-
-    // 자동 진행: 첫 페이지 displayTimeSec>0 이면 타이머 시작.
-    if (m_programAdvanceTimer) {
-        m_programAdvanceTimer->stop();
-        if (firstPageTime > 0) {
-            m_programAdvanceTimer->start(firstPageTime * 1000);
-            qInfo() << "Program advance armed:" << firstPageTime << "s,"
-                    << "action=" << endActionToString(p->endAction)
-                    << "program=" << p->name;
-        }
+    if (auto* pgl = m_controlWindow->pageList()) {
+        pgl->setProgram(p, dataDir());
+        pgl->setActivePage(m_editPageId);
     }
     m_controlWindow->setStatusText(tr("Playing: %1").arg(p->name));
+
+    playPageAt(p, 0);                   // 첫 페이지부터 재생
 }
 
+// 지정 페이지를 SceneModel 로 로드 → Live 송출 → 페이지 displayTime 으로 타이머.
+//   재생 중 사용자 편집 대상(m_editPageId)도 이 페이지로 이동해서 편집자가
+//   화면에서 현재 뭐가 나오는지 즉시 파악할 수 있게 함.
+void Application::playPageAt(const Program* p, int pageIdx) {
+    if (!p || pageIdx < 0 || pageIdx >= p->pages.size()) return;
+    m_currentPageIdx = pageIdx;
+    m_editPageId     = p->pages[pageIdx].id;
+
+    m_suppressEditSave = true;
+    m_scene->replaceAll(p->pages[pageIdx].layers);
+    m_suppressEditSave = false;
+
+    if (m_takeController) m_takeController->take();   // Live 송출 (+ taken→NovaStar)
+
+    if (auto* pgl = m_controlWindow->pageList())
+        pgl->setActivePage(m_editPageId);
+
+    const int t = p->pages[pageIdx].displayTimeSec;
+    m_controlWindow->setPreviewDisplayTime(t);
+    if (m_programAdvanceTimer) {
+        m_programAdvanceTimer->stop();
+        if (t > 0) {
+            m_programAdvanceTimer->start(t * 1000);
+            qInfo() << "Page advance armed:" << t << "s,"
+                    << "program=" << p->name
+                    << "pageIdx=" << pageIdx
+                    << "of" << p->pages.size();
+        }
+    }
+}
+
+// 페이지 만료 → 다음 페이지 or 프로그램 종료 동작.
 void Application::onProgramAdvance() {
     if (m_currentProgramId.isEmpty()) return;
     const Program* cur = m_programs->find(m_currentProgramId);
-    if (!cur) return;
+    if (!cur || cur->pages.isEmpty()) return;
+
+    // 다음 페이지 있으면 진행.
+    const int nextIdx = m_currentPageIdx + 1;
+    if (nextIdx < cur->pages.size()) {
+        playPageAt(cur, nextIdx);
+        return;
+    }
+
+    // 마지막 페이지 → program.endAction.
     const EndAction act   = cur->endAction;
     const QString   curId = m_currentProgramId;
-
     switch (act) {
     case EndAction::Next: {
         const QString next = m_programs->nextIdAfter(curId, EndAction::Next);
@@ -723,13 +758,12 @@ void Application::onProgramAdvance() {
         break;
     }
     case EndAction::Loop:
-        playProgram(curId);             // 자기 자신 재생(타이머 재무장)
+        playProgram(curId);             // 자기 프로그램 첫 페이지부터 재생
         break;
     case EndAction::Stop:
         stopProgramPlayback();
         break;
     case EndAction::First: {
-        // 마지막 → 첫 순환 (Next 의 wrap-around 형태). 목록 비어있으면 stop.
         if (m_programs->count() > 0)
             playProgram(m_programs->programs().first().id);
         else
@@ -738,7 +772,7 @@ void Application::onProgramAdvance() {
     }
     case EndAction::Hold:
     default:
-        break;                          // Live 유지, 타이머 만료로 정지
+        break;                          // Live 유지 (마지막 페이지), 타이머 정지
     }
 }
 
@@ -746,6 +780,7 @@ void Application::stopProgramPlayback() {
     if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
     if (m_takeController) m_takeController->clearLive();   // Live 비움(검정), 편집 무영향
     m_currentProgramId.clear();
+    m_currentPageIdx = 0;
     if (auto* pl = m_controlWindow->programList())
         pl->setActiveProgram(QString());
     m_controlWindow->setPreviewDisplayTime(-1);            // UI-F
@@ -946,9 +981,10 @@ void Application::onProgramDeleteRequested(const QString& id) {
 
 // ▶ 클릭(true) / ⏸·리셋(false) 에 반응해 리허설 창 제어.
 //   playing=true  : 현재 SceneModel 스냅샷을 리허설 창에 apply + 창 표시
-//                   + 리허설 세션 트래킹용 m_previewProgramId 시작값 설정
+//                   + 리허설 세션 트래킹용 m_previewProgramId/Idx 시작값 설정
 //   playing=false : 창 숨김 + 씬 비움(플레이어 반환) + 세션 트래킹 클리어
-// 자연 만료(auto-complete)는 previewCompleted 로 별도 처리 — endAction 체인.
+// 자연 만료(auto-complete)는 previewCompleted 로 별도 처리 — 페이지 순회 →
+// 마지막 페이지 후 program.endAction 체인.
 void Application::onPreviewPlayingChanged(bool playing) {
     if (!m_rehearsalWindow) return;
     if (playing) {
@@ -957,13 +993,23 @@ void Application::onPreviewPlayingChanged(bool playing) {
         m_rehearsalWindow->show();
         m_rehearsalWindow->raise();
         m_rehearsalWindow->activateWindow();
-        // 리허설 세션 시작 — 현재 편집 대상을 초기 preview 프로그램으로.
-        // 스크래치(m_editProgramId 빔)이면 세션은 열리되 체인 대상 없음.
+        // 리허설 세션 시작 — 현재 편집 페이지에서 시작(전체 프로그램 순회).
         m_previewProgramId = m_editProgramId;
+        m_previewPageIdx   = 0;
+        if (!m_previewProgramId.isEmpty()) {
+            const Program* p = m_programs->find(m_previewProgramId);
+            if (p) {
+                for (int i = 0; i < p->pages.size(); ++i)
+                    if (p->pages[i].id == m_editPageId) {
+                        m_previewPageIdx = i; break;
+                    }
+            }
+        }
     } else {
         m_rehearsalWindow->applyScene({});      // 플레이어 반환
         m_rehearsalWindow->hide();
         m_previewProgramId.clear();
+        m_previewPageIdx = 0;
     }
 }
 
@@ -982,10 +1028,21 @@ void Application::onPreviewCompleted() {
     const Program* p = m_programs ? m_programs->find(m_previewProgramId) : nullptr;
     if (!p) { finishSession(); return; }
 
+    // 다음 페이지 있으면 페이지 순회 (같은 프로그램 유지).
+    const int nextPageIdx = m_previewPageIdx + 1;
+    if (nextPageIdx < p->pages.size()) {
+        m_previewPageIdx = nextPageIdx;
+        m_rehearsalWindow->applyScene(p->pages[nextPageIdx].layers);
+        m_controlWindow->restartPreviewCountdown(
+            p->pages[nextPageIdx].displayTimeSec);
+        return;
+    }
+
+    // 마지막 페이지 종료 → program.endAction 으로 체인.
     switch (p->endAction) {
     case EndAction::Loop:
-        // 같은 프로그램 재적용 — 동영상이 처음부터 다시 재생됨.
-        //  Phase A: 첫 페이지 기준. Phase C 에서 페이지 순회 지원 시 재구성.
+        // 같은 프로그램 첫 페이지부터 다시 (페이지 인덱스 리셋).
+        m_previewPageIdx = 0;
         m_rehearsalWindow->applyScene(p->pages.first().layers);
         m_controlWindow->restartPreviewCountdown(
             p->pages.first().displayTimeSec);
@@ -995,8 +1052,9 @@ void Application::onPreviewCompleted() {
                                                         EndAction::Next);
         if (nextId.isEmpty()) { finishSession(); break; }   // 마지막 → stop
         const Program* np = m_programs->find(nextId);
-        if (!np) { finishSession(); break; }
+        if (!np || np->pages.isEmpty()) { finishSession(); break; }
         m_previewProgramId = nextId;
+        m_previewPageIdx   = 0;
         m_rehearsalWindow->applyScene(np->pages.first().layers);
         m_controlWindow->restartPreviewCountdown(
             np->pages.first().displayTimeSec);
@@ -1005,7 +1063,9 @@ void Application::onPreviewCompleted() {
     case EndAction::First: {
         if (m_programs->count() == 0) { finishSession(); break; }
         const Program& fp = m_programs->programs().first();
+        if (fp.pages.isEmpty()) { finishSession(); break; }
         m_previewProgramId = fp.id;
+        m_previewPageIdx   = 0;
         m_rehearsalWindow->applyScene(fp.pages.first().layers);
         m_controlWindow->restartPreviewCountdown(
             fp.pages.first().displayTimeSec);
@@ -1185,6 +1245,33 @@ void Application::onPageMoveDownRequested(const QString& pageId) {
         const Program* np = m_programs->find(m_editProgramId);
         if (np) { pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId); }
     }
+}
+
+// UI-D Phase C — 페이지 우클릭 "표시 시간 설정...".
+//  Program 시간 편집과 동일 패턴이지만 대상이 페이지. 편집 대상 페이지면
+//  Preview 툴바 라벨/▶ 활성 즉시 반영. 재생 중 이 페이지의 시간이 바뀌면
+//  현재 타이머 재무장은 하지 않음(현재 페이지의 남은 시간 유지가 자연스러움).
+void Application::onPageDisplayTimeEditRequested(const QString& pageId) {
+    if (m_editProgramId.isEmpty()) return;
+    const Program* p = m_programs->find(m_editProgramId);
+    if (!p) return;
+    const int idx = pageIndexOf(*p, pageId);
+    if (idx < 0) return;
+    const int curSec = p->pages[idx].displayTimeSec;
+    bool ok = false;
+    const int sec = QInputDialog::getInt(
+        m_controlWindow.get(),
+        tr("페이지 표시 시간"),
+        tr("자동 진행 초 (0 = 수동 · 최대 86400):"),
+        curSec, 0, 86400, 1, &ok);
+    if (!ok || sec == curSec) return;
+    Program up = *p;
+    up.pages[idx].displayTimeSec = sec;
+    m_programs->update(up);
+    m_programs->save(resolveProgramsPath());
+    // 편집 대상 페이지면 Preview 툴바 라벨/▶ 활성 즉시 갱신.
+    if (pageId == m_editPageId)
+        m_controlWindow->setPreviewDisplayTime(sec);
 }
 
 } // namespace uwp
