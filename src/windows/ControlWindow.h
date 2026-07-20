@@ -55,6 +55,9 @@ public slots:
     void showPagesTab();
     void showProgramsTab();
 
+    // 응급 BLACK 버튼 시각 상태 — Application 이 실제 상태 관리.
+    void setBlackoutActive(bool active);
+
     // 리허설 체인 (Loop/Next/First) 연속 재생 시 카운트다운만 재시작.
     //   newTotalSec: 다음 프로그램의 displayTimeSec (0 = 새 프로그램이 수동
     //   진행 — 카운트다운 정지, 창은 유지). 창 열림/닫힘 상태는 건드리지 않음.
@@ -78,6 +81,8 @@ signals:
     // 카운트다운이 자연 만료 (auto-complete). Application 이 프로그램의
     // endAction 을 조회해 체인(반복/다음/첫)·정지·유지 중 하나를 실행.
     void previewCompleted();
+    // 응급 F2B 토글. Application 이 상태 관리 + setBlackoutActive 로 시각 회신.
+    void blackoutRequested();
 
 private:
     void createMenus();
@@ -103,6 +108,7 @@ private:
     //  applyScene({}) 가 LiveWindow 검정 배경을 그대로 보여준다.
     QPushButton*  m_takeButton      = nullptr;   // TAKE (큰 빨간 버튼)
     QPushButton*  m_btnTransition   = nullptr;   // Fade ↔ Cut 토글 (한 버튼)
+    QPushButton*  m_btnBlack        = nullptr;   // 응급 F2B 토글 (BLACK)
 
     // UI-F: Preview 인라인 툴바
     //   + 레이어 버튼은 미디어 라이브러리 드래그앤드롭과 기능 중복이라 제거.

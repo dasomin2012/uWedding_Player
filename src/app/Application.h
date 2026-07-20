@@ -71,6 +71,8 @@ private slots:
     void onPreviewPlayingChanged(bool playing);
     // 리허설 카운트다운 자연 만료 → 프로그램의 endAction 조회하여 체인 결정.
     void onPreviewCompleted();
+    // 응급 BLACK 토글 (Live 검정 / 복귀).
+    void onBlackoutRequested();
 
 private:
     QString resolveSettingsPath() const;
@@ -81,6 +83,8 @@ private:
     // Phase 5b — 편집 자동저장 (현재 편집 대상 program 으로 binding)
     void scheduleEditSave();                         // 씬 변경 → 디바운스 타이머 재시작
     void persistEditProgram();                       // 편집 대상에 layers+썸네일 저장
+    void persistSessionState();                      // 마지막 편집 프로그램 id 를 QSettings 에
+    void restoreSessionState();                      // 앱 시작 시 세션 복원
     void flushEditSave();                            // 대기중 저장을 즉시 반영
 
     // Phase 5c — program 재생/자동 진행 (UI-D: 페이지 단위로 확장됨)
@@ -136,6 +140,9 @@ private:
     QString m_previewProgramId;
     // UI-D Phase C — 리허설 세션 내 현재 페이지 인덱스.
     int     m_previewPageIdx = 0;
+
+    // 응급 F2B — Live 검정 상태. 이후 TAKE 발생 시 자동 해제.
+    bool    m_blackoutActive = false;
     QTimer* m_editSaveTimer  = nullptr;   // 편집 자동저장 디바운스
     bool    m_suppressEditSave = false;   // 프로그램 로드 중 모델변경을 편집으로 오인 방지
 

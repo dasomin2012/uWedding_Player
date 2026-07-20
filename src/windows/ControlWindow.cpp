@@ -91,13 +91,34 @@ QPushButton#TransButton {
     color: #f5ede0;
     border: 0;
     border-radius: 8px;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
-    padding: 14px 20px;
-    letter-spacing: 0.06em;
+    padding: 14px 6px;
+    letter-spacing: 0.04em;
 }
 QPushButton#TransButton:hover  { background: #4d423a; }
 QPushButton#TransButton:pressed { background: #2a2320; }
+
+/* 응급 BLACK 토글 — 비활성: 흰 배경 + 검은 텍스트,
+                   활성:   검은 배경 + 흰 텍스트. */
+QPushButton#BlackButton {
+    background: #ffffff;
+    color: #1c1512;
+    border: 1px solid #d3c8b8;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 800;
+    padding: 14px 4px;
+    letter-spacing: 0.05em;
+}
+QPushButton#BlackButton:hover  { background: #f5ede0; border-color: #b98a5e; }
+QPushButton#BlackButton:pressed { background: #ece0cc; }
+QPushButton#BlackButton:checked {
+    background: #000000;
+    color: #ffffff;
+    border-color: #000000;
+}
+QPushButton#BlackButton:checked:hover { background: #1c1512; }
 
 QPushButton#PreviewToolBtn {
     background: #ffffff;
@@ -305,13 +326,34 @@ QPushButton#TransButton {
     color: #14100c;
     border: 0;
     border-radius: 8px;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
-    padding: 14px 20px;
-    letter-spacing: 0.06em;
+    padding: 14px 6px;
+    letter-spacing: 0.04em;
 }
 QPushButton#TransButton:hover  { background: #d6b48e; }
 QPushButton#TransButton:pressed { background: #a88760; }
+
+/* 응급 BLACK 토글 — 다크 팔레트: 비활성 시 크림 배경 + 딥 텍스트,
+                                  활성 시 검은 배경 + 흰 텍스트. */
+QPushButton#BlackButton {
+    background: #e8ddd0;
+    color: #14100c;
+    border: 1px solid #3a322c;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 800;
+    padding: 14px 4px;
+    letter-spacing: 0.05em;
+}
+QPushButton#BlackButton:hover  { background: #d6c8b8; border-color: #c8a37a; }
+QPushButton#BlackButton:pressed { background: #b8a790; }
+QPushButton#BlackButton:checked {
+    background: #000000;
+    color: #ffffff;
+    border-color: #000000;
+}
+QPushButton#BlackButton:checked:hover { background: #1c1512; }
 
 QPushButton#PreviewToolBtn {
     background: #26211c;
@@ -616,7 +658,7 @@ void ControlWindow::createCentralLayout() {
     m_btnTransition = new QPushButton;
     m_btnTransition->setObjectName("TransButton");
     m_btnTransition->setMinimumHeight(52);
-    m_btnTransition->setMinimumWidth(90);
+    m_btnTransition->setFixedWidth(64);   // 컴팩트 — TAKE 에 폭 양보
     {
         const QString dm = m_settings ? m_settings->takeDefaultMode().toLower()
                                       : QString("fade");
@@ -630,6 +672,16 @@ void ControlWindow::createCentralLayout() {
         m_btnTransition->setText(next);
         emit takeModeChanged(next.toLower());
     });
+
+    // 응급 BLACK 토글 — Live 즉시 검정/복귀. 상태 관리는 Application.
+    m_btnBlack = new QPushButton(QStringLiteral("BLACK"));
+    m_btnBlack->setObjectName("BlackButton");
+    m_btnBlack->setCheckable(true);
+    m_btnBlack->setMinimumHeight(52);
+    m_btnBlack->setFixedWidth(72);        // BLACK 5글자 여유
+    m_btnBlack->setToolTip(tr("응급 검정 화면 (클릭하여 켜기 / 끄기)"));
+    connect(m_btnBlack, &QPushButton::clicked, this,
+            [this]{ emit blackoutRequested(); });
 
     // ----- 컬럼 조립 -----
 
@@ -656,7 +708,9 @@ void ControlWindow::createCentralLayout() {
     centerCol->addWidget(programPanel);
     centerCol->setStretchFactor(0, 3);
     centerCol->setStretchFactor(1, 1);
-    centerCol->setSizes({ 560, 340 });   // 초기: 접힘 상태 기준(하단 340)
+    // 초기: 프로그램 펼침 상태(m_collapsed=false, 234) + 페이지(~200) 합계 여유.
+    // collapseChanged 핸들러가 이후 접힘/펼침에 맞춰 재배분.
+    centerCol->setSizes({ 500, 460 });
 
     // 프로그램 리스트 접힘/펼침에 따라 하단 영역 크기 자동 조정 —
     // 펼침 시 카드 표시로 세로가 늘어나므로 Preview 를 살짝 줄여 페이지가
@@ -902,12 +956,13 @@ QWidget* ControlWindow::buildLivePanel() {
     v->setSpacing(8);
     v->addWidget(m_liveMirror, 1);
 
-    // [       TAKE       ] [Fade/Cut] — TAKE 는 늘어남, 전환 버튼은 컴팩트.
+    // [       TAKE       ] [Fade/Cut] [BLACK] — TAKE 는 늘어남, 나머지 컴팩트.
     auto* row = new QHBoxLayout;
     row->setSpacing(6);
     row->setContentsMargins(0, 0, 0, 0);
     row->addWidget(m_takeButton, 1);
     row->addWidget(m_btnTransition);
+    row->addWidget(m_btnBlack);
     v->addLayout(row);
 
     return box;
@@ -941,6 +996,12 @@ void ControlWindow::showPagesTab() {
 }
 void ControlWindow::showProgramsTab() {
     if (m_programList) m_programList->setCollapsed(false);
+}
+
+void ControlWindow::setBlackoutActive(bool active) {
+    if (!m_btnBlack) return;
+    // QSS :checked 로 배경/텍스트 색 전환 — checkable 버튼의 상태만 갱신.
+    m_btnBlack->setChecked(active);
 }
 
 // LiveMirror: 폴링된 프레임을 우상단 Live 패널에 반영.

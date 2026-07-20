@@ -38,6 +38,7 @@
 #include <QPointer>
 #include <QRadioButton>
 #include <QScreen>
+#include <QSettings>
 #include <QStatusBar>
 #include <QStringList>
 #include <QTimer>
@@ -152,6 +153,8 @@ bool Application::initialize() {
             this, &Application::onPreviewPlayingChanged);
     connect(m_controlWindow.get(), &ControlWindow::previewCompleted,
             this, &Application::onPreviewCompleted);
+    connect(m_controlWindow.get(), &ControlWindow::blackoutRequested,
+            this, &Application::onBlackoutRequested);
 
     connect(m_controlWindow.get(), &ControlWindow::selectOutputMonitorRequested,
             this, &Application::onSelectOutputMonitorRequested);
@@ -227,6 +230,7 @@ bool Application::initialize() {
     }
     // 부재 시 빈 리스트로 시작(에러 아님). 손상 시 .bak 백업 후 빈 리스트.
     m_programs->load(resolveProgramsPath());
+    restoreSessionState();   // 마지막 편집 프로그램 복원 (있으면 자동 선택)
 
     // Phase 5b — 편집 자동저장: 씬 변경 → 디바운스 → 현재 편집 program 에 반영.
     m_editSaveTimer = new QTimer(this);
@@ -308,6 +312,11 @@ bool Application::initialize() {
     //      확정 + 자동 진행 timer 재무장. (더블클릭이 더는 Play 를 유발하지 않으므로
     //      TAKE 가 Play 트리거 역할을 겸함.)
     connect(m_controlWindow.get(), &ControlWindow::takeRequested, this, [this]() {
+        // TAKE 발생 → BLACK 자동 해제 (실제 컨텐츠가 Live 에 나가므로).
+        if (m_blackoutActive) {
+            m_blackoutActive = false;
+            m_controlWindow->setBlackoutActive(false);
+        }
         if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
         if (m_editProgramId.isEmpty() || !m_programs) return;
         const Program* p = m_programs->find(m_editProgramId);
@@ -366,7 +375,7 @@ bool Application::initialize() {
             });
 
     // ----- 표시 -----
-    m_controlWindow->show();
+    m_controlWindow->showMaximized();   // 처음 실행 시 전체화면(최대화)
     if (!useObs) {
         m_liveWindow->showOnMonitor(m_settings.outputMonitorIndex());
     } else {
@@ -649,6 +658,7 @@ void Application::onProgramAddRequested() {
 
     m_editProgramId = p.id;                    // 이후 편집은 이 program 에 저장
     m_editPageId    = p.pages.first().id;
+    persistSessionState();                     // 세션 복원용
     if (auto* pl = m_controlWindow->programList()) {
         pl->selectProgram(p.id);
         pl->setCurrentProgramName(p.name);     // 접힌 상태 헤더 라벨(수동 접기 시 사용)
@@ -675,6 +685,7 @@ void Application::onProgramSelected(const QString& id) {
     m_suppressEditSave = false;
     m_editProgramId = id;
     m_editPageId    = p->pages.first().id;
+    persistSessionState();                     // 세션 복원용
     if (auto* pl = m_controlWindow->programList()) {
         pl->setCurrentProgramName(p->name);
         // 자동 접기 안 함 — 사용자가 다른 프로그램들의 페이지도 살펴보며
@@ -704,6 +715,7 @@ void Application::playProgram(const QString& id) {
     m_editProgramId    = id;
     m_currentProgramId = id;            // take 전에 설정 → currentNovaPresetId 정확
     m_editPageId       = p->pages.first().id;
+    persistSessionState();              // 세션 복원용
 
     if (auto* pl = m_controlWindow->programList()) {
         pl->setActiveProgram(id);       // 재생중 강조
@@ -822,7 +834,12 @@ static int pageIndexOf(const Program& p, const QString& pageId) {
 void Application::persistEditProgram() {
     if (m_editProgramId.isEmpty()) return;
     const Program* cur = m_programs->find(m_editProgramId);
-    if (!cur) { m_editProgramId.clear(); m_editPageId.clear(); return; }
+    if (!cur) {
+        m_editProgramId.clear();
+        m_editPageId.clear();
+        persistSessionState();
+        return;
+    }
     Program up = *cur;
 
     // 편집 페이지 인덱스 확정 (없으면 첫 페이지로 안전 폴백).
@@ -864,6 +881,28 @@ void Application::flushEditSave() {
         m_editSaveTimer->stop();
         persistEditProgram();
     }
+}
+
+// 세션 상태(마지막 편집 프로그램 id) 를 QSettings 로 저장.
+//   settings.json 은 앱 설정용이라 자주 변경되는 세션 상태는 QSettings 분리.
+void Application::persistSessionState() {
+    QSettings qs(QStringLiteral("Hanmac"), QStringLiteral("uWeddingPlayer"));
+    qs.setValue(QStringLiteral("session/lastEditProgramId"), m_editProgramId);
+}
+
+// 앱 시작 시(m_programs 로드 완료 후) 마지막 편집 프로그램을 복원.
+//   목록에 존재하지 않는 id (삭제됨)는 무시. onProgramSelected() 를 재사용해
+//   씬/페이지/카드 강조까지 일관되게 복원.
+void Application::restoreSessionState() {
+    QSettings qs(QStringLiteral("Hanmac"), QStringLiteral("uWeddingPlayer"));
+    const QString lastId = qs.value(
+        QStringLiteral("session/lastEditProgramId")).toString();
+    if (lastId.isEmpty()) return;
+    if (!m_programs->find(lastId)) return;    // 삭제된 프로그램이면 조용히 무시
+    onProgramSelected(lastId);
+    // 프로그램 카드 리스트에서도 시각 선택 상태 반영 (유저 클릭과 동일 UI 상태).
+    if (auto* pl = m_controlWindow->programList())
+        pl->selectProgram(lastId);
 }
 
 void Application::onProgramRenameRequested(const QString& id,
@@ -980,6 +1019,7 @@ void Application::onProgramDeleteRequested(const QString& id) {
         if (m_editSaveTimer) m_editSaveTimer->stop();
         m_editProgramId.clear();
         m_editPageId.clear();
+        persistSessionState();
         m_controlWindow->setPreviewDisplayTime(-1);   // UI-F
         if (auto* pgl = m_controlWindow->pageList())
             pgl->setProgram(nullptr, dataDir());
@@ -1287,6 +1327,26 @@ void Application::onPageDisplayTimeEditRequested(const QString& pageId) {
     // 편집 대상 페이지면 Preview 툴바 라벨/▶ 활성 즉시 갱신.
     if (pageId == m_editPageId)
         m_controlWindow->setPreviewDisplayTime(sec);
+}
+
+// 응급 F2B — Live 검정/복귀 토글. 상태 관리 + TakeController 로 위임.
+//   ON : applyScene({}) → LiveWindow 검정 배경 or OBS 빈 씬. 자동 진행 타이머 정지.
+//   OFF: 현재 SceneModel (편집 중 페이지) 을 다시 TAKE → Live 복귀.
+// TAKE 로 실제 컨텐츠 나가면 자동 OFF (위 takeRequested 핸들러).
+void Application::onBlackoutRequested() {
+    if (!m_takeController) return;
+    m_blackoutActive = !m_blackoutActive;
+    if (m_blackoutActive) {
+        // 진행 중이던 자동 진행 정지 — 검정 상태에서 계속 진행하면 이상.
+        if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
+        m_takeController->clearLive();      // 빈 씬 → Live 검정
+        m_controlWindow->setStatusText(tr("BLACK — Live 검정 (다시 클릭하여 복귀)"));
+    } else {
+        // 현재 편집 페이지를 다시 Live 로 → 복귀.
+        m_takeController->take();
+        m_controlWindow->setStatusText(tr("BLACK 해제"));
+    }
+    m_controlWindow->setBlackoutActive(m_blackoutActive);
 }
 
 } // namespace uwp
