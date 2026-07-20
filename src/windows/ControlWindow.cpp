@@ -118,18 +118,6 @@ QLabel#PreviewTimeLabel {
     border-radius: 6px;
 }
 
-QPushButton#FillButton {
-    background: #8a5a3b;
-    color: #ffffff;
-    border: 0;
-    border-radius: 6px;
-    font-weight: 700;
-    padding: 8px 12px;
-    letter-spacing: 0.03em;
-}
-QPushButton#FillButton:hover { background: #a06b47; }
-QPushButton#FillButton:pressed { background: #6d4630; }
-
 QPushButton#MediaTab {
     background: transparent;
     border: 1px solid transparent;
@@ -314,18 +302,6 @@ QLabel#PreviewTimeLabel {
     background: #26211c;
     border-radius: 6px;
 }
-
-QPushButton#FillButton {
-    background: #c8a37a;
-    color: #14100c;
-    border: 0;
-    border-radius: 6px;
-    font-weight: 700;
-    padding: 8px 12px;
-    letter-spacing: 0.03em;
-}
-QPushButton#FillButton:hover { background: #d6b48e; }
-QPushButton#FillButton:pressed { background: #a88760; }
 
 QPushButton#MediaTab {
     background: transparent;
@@ -671,6 +647,21 @@ QWidget* ControlWindow::buildPreviewPane() {
     m_timeLabel = new QLabel(tr("표시 시간: —"));
     m_timeLabel->setObjectName("PreviewTimeLabel");
 
+    // 우측: 캔버스에 꽉 채우기 (선택 레이어 → geometry = 캔버스 전체).
+    //   최대화 창 아이콘(SP_TitleBarMaxButton)이 시각적으로 "꽉 채우기" 의미
+    //   전달에 가장 근접. Windows/Linux 모두 네이티브 스타일 아이콘 제공.
+    m_btnFillCanvas = new QPushButton;
+    m_btnFillCanvas->setObjectName("PreviewToolBtn");
+    m_btnFillCanvas->setIcon(style()->standardIcon(QStyle::SP_TitleBarMaxButton));
+    m_btnFillCanvas->setToolTip(tr("선택된 레이어를 캔버스에 꽉 채우기"));
+    m_btnFillCanvas->setEnabled(false);
+    connect(m_btnFillCanvas, &QPushButton::clicked, this, [this]{
+        if (!m_scene || m_scene->selectedId().isEmpty()) return;
+        const QSize cs = m_scene->canvasSize();
+        m_scene->setGeometry(m_scene->selectedId(),
+                             QRectF(0, 0, cs.width(), cs.height()));
+    });
+
     // 우측 끝: 선택 레이어 삭제 (플랫폼 네이티브 휴지통 아이콘).
     m_btnDeleteLayer = new QPushButton;
     m_btnDeleteLayer->setObjectName("PreviewToolBtn");
@@ -681,21 +672,25 @@ QWidget* ControlWindow::buildPreviewPane() {
         if (m_scene && !m_scene->selectedId().isEmpty())
             m_scene->removeLayer(m_scene->selectedId());
     });
-    // 선택 상태 → 버튼 활성 동기화. 삭제 후 선택 해제되면 다시 비활성.
+    // 선택 상태 → 두 아이콘 버튼 활성 동기화.
     if (m_scene) {
         connect(m_scene, &SceneModel::selectionChanged, this,
                 [this](const QString& id) {
-                    if (m_btnDeleteLayer) m_btnDeleteLayer->setEnabled(!id.isEmpty());
+                    const bool has = !id.isEmpty();
+                    if (m_btnFillCanvas)  m_btnFillCanvas->setEnabled(has);
+                    if (m_btnDeleteLayer) m_btnDeleteLayer->setEnabled(has);
                 });
-        // 초기 상태 반영(스크래치 로드 등)
-        m_btnDeleteLayer->setEnabled(!m_scene->selectedId().isEmpty());
+        const bool has = !m_scene->selectedId().isEmpty();
+        m_btnFillCanvas->setEnabled(has);
+        m_btnDeleteLayer->setEnabled(has);
     }
 
     toolbar->addWidget(m_btnPreviewPlay);
     toolbar->addSpacing(8);
     toolbar->addWidget(m_timeLabel);
     toolbar->addStretch(1);
-    toolbar->addWidget(m_btnDeleteLayer);   // 우측 정렬
+    toolbar->addWidget(m_btnFillCanvas);    // 우측: 꽉 채우기
+    toolbar->addWidget(m_btnDeleteLayer);   // 우측 끝: 삭제
 
     v->addLayout(toolbar);
     v->addWidget(m_canvas, 1);

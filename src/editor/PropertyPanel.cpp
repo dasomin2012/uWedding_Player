@@ -56,11 +56,6 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     m_name = new QLineEdit;
 
     // ----- 위치 / 크기 -----
-    m_btnFill = new QPushButton("꽉 채우기");
-    m_btnFill->setMinimumHeight(36);
-    // 테마별 색상은 ControlWindow QSS 에서 QPushButton#FillButton 규칙으로 적용.
-    m_btnFill->setObjectName("FillButton");
-
     auto mkSpin = [](int lo, int hi) {
         auto* s = new QSpinBox;
         s->setRange(lo, hi);
@@ -126,7 +121,6 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     auto* root = new QVBoxLayout(this);
     root->addWidget(title);
     root->addLayout(form);
-    root->addWidget(m_btnFill);
     root->addWidget(new QLabel("위치 / 크기"));
     root->addLayout(geo);
     // 한 줄: [화면 비율 라벨] [X] : [Y]  ────────  [☑ 비율 고정]
@@ -163,7 +157,6 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
             this, &PropertyPanel::onLayerChanged);
 
     // panel -> model
-    connect(m_btnFill, &QPushButton::clicked, this, &PropertyPanel::onFillClicked);
     connect(m_x, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &PropertyPanel::commitGeometry);
     connect(m_y, QOverload<int>::of(&QSpinBox::valueChanged),
@@ -210,7 +203,7 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
 
 void PropertyPanel::setEnabledAll(bool on) {
     QWidget* widgets[] = {
-        (QWidget*)m_name, (QWidget*)m_btnFill,
+        (QWidget*)m_name,
         (QWidget*)m_x, (QWidget*)m_y, (QWidget*)m_w, (QWidget*)m_h,
         (QWidget*)m_aspectW, (QWidget*)m_aspectH,
         (QWidget*)m_lockAspect, (QWidget*)m_opacitySlider,
@@ -267,12 +260,6 @@ void PropertyPanel::loadFrom(const QString& id) {
 }
 
 // ---- 위치 / 크기 ----------------------------------------------
-void PropertyPanel::onFillClicked() {
-    if (m_id.isEmpty()) return;
-    const QSize c = m_model->canvasSize();
-    m_model->setGeometry(m_id, QRectF(0, 0, c.width(), c.height()));
-}
-
 void PropertyPanel::onWidthChanged(int w) {
     if (m_loading || m_id.isEmpty()) return;
     if (m_lockAspect && m_lockAspect->isChecked()) {

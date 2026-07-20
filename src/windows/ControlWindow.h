@@ -87,6 +87,7 @@ private:
     //   + 레이어 버튼은 미디어 라이브러리 드래그앤드롭과 기능 중복이라 제거.
     QPushButton* m_btnPreviewPlay = nullptr;   // ▶ (placeholder)
     QLabel*      m_timeLabel      = nullptr;   // 표시 시간
+    QPushButton* m_btnFillCanvas  = nullptr;   // 우측: 선택 레이어 캔버스에 꽉 채우기
     QPushButton* m_btnDeleteLayer = nullptr;   // 우측 끝: 선택 레이어 삭제(휴지통)
 
     // UI-B: 다크 모드
