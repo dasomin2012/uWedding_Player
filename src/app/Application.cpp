@@ -21,7 +21,10 @@
 #include <QMetaEnum>
 #endif
 
+#include <QButtonGroup>
 #include <QCoreApplication>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QEvent>
 #include <QFileInfo>
@@ -29,14 +32,17 @@
 #include <QFileDialog>
 #include <QImage>
 #include <QInputDialog>
+#include <QLabel>
 #include <QMessageBox>
 #include <QPointer>
+#include <QRadioButton>
 #include <QScreen>
 #include <QStatusBar>
 #include <QStringList>
 #include <QTimer>
 #include <QFile>
 #include <QPixmap>
+#include <QVBoxLayout>
 #include <QDebug>
 
 namespace uwp {
@@ -171,7 +177,7 @@ bool Application::initialize() {
                     if (!p) return;
                     const QString thumb = p->thumbnailRelPath.isEmpty()
                         ? QString() : dataDir() + "/" + p->thumbnailRelPath;
-                    pl->updateItem(id, p->name, thumb);
+                    pl->updateItem(id, *p, thumb);
                 });
 
         // Phase 5b — 리스트 동작 와이어링
@@ -187,6 +193,8 @@ bool Application::initialize() {
                 this, &Application::onProgramDeleteRequested);
         connect(pl, &ProgramListWidget::displayTimeEditRequested,
                 this, &Application::onProgramDisplayTimeEditRequested);
+        connect(pl, &ProgramListWidget::endActionEditRequested,
+                this, &Application::onProgramEndActionEditRequested);
     }
     // 부재 시 빈 리스트로 시작(에러 아님). 손상 시 .bak 백업 후 빈 리스트.
     m_programs->load(resolveProgramsPath());
@@ -681,6 +689,14 @@ void Application::onProgramAdvance() {
     case EndAction::Stop:
         stopProgramPlayback();
         break;
+    case EndAction::First: {
+        // 마지막 → 첫 순환 (Next 의 wrap-around 형태). 목록 비어있으면 stop.
+        if (m_programs->count() > 0)
+            playProgram(m_programs->programs().first().id);
+        else
+            stopProgramPlayback();
+        break;
+    }
     case EndAction::Hold:
     default:
         break;                          // Live 유지, 타이머 만료로 정지
@@ -742,6 +758,60 @@ void Application::onProgramRenameRequested(const QString& id,
     up.name = newName;
     m_programs->update(up);                   // → programUpdated → 갱신
     m_programs->save(resolveProgramsPath());
+}
+
+// 프로그램 카드 우클릭 → "종료 동작 설정..." — displayTime 만료 후 무엇을 할지.
+//   Loop:  자기 자신 재생(반복).
+//   Stop:  Live 검정 + 재생 종료.
+//   Hold:  마지막 프레임 유지, 타이머 정지.
+//   Next:  목록 순서 상 다음 프로그램 자동 재생 (마지막이면 정지).
+//   First: 첫 번째 프로그램으로 (Next 의 마지막→첫 순환 형태).
+//
+// QInputDialog::getItem 은 콤보 드롭다운을 사용해 확장 모니터로 튀어나가는
+// 사례가 있어, 라디오 버튼 방식 커스텀 QDialog 로 대체 — 모든 선택지가 항상
+// 노출되어 추가 팝업이 없다.
+void Application::onProgramEndActionEditRequested(const QString& id) {
+    const Program* p = m_programs->find(id);
+    if (!p) return;
+
+    struct Item { QString label; EndAction ea; };
+    const QVector<Item> items = {
+        { tr("반복 재생 (같은 프로그램 반복)"),  EndAction::Loop  },
+        { tr("정지 (Live 검정)"),               EndAction::Stop  },
+        { tr("마지막 화면 유지"),                EndAction::Hold  },
+        { tr("다음 프로그램으로"),               EndAction::Next  },
+        { tr("첫 프로그램으로"),                 EndAction::First },
+    };
+
+    QDialog dlg(m_controlWindow.get());
+    dlg.setWindowTitle(tr("프로그램 종료 동작"));
+    auto* v = new QVBoxLayout(&dlg);
+    v->addWidget(new QLabel(tr("표시 시간이 지나면:")));
+    QButtonGroup group(&dlg);
+    for (int i = 0; i < items.size(); ++i) {
+        auto* rb = new QRadioButton(items[i].label, &dlg);
+        rb->setChecked(items[i].ea == p->endAction);
+        group.addButton(rb, i);
+        v->addWidget(rb);
+    }
+    auto* bb = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    v->addWidget(bb);
+
+    if (dlg.exec() != QDialog::Accepted) return;
+    const int selected = group.checkedId();
+    if (selected < 0) return;
+    const EndAction ea = items[selected].ea;
+    if (ea == p->endAction) return;
+
+    Program up = *p;
+    up.endAction = ea;
+    m_programs->update(up);                    // → programUpdated → 카드 갱신
+    m_programs->save(resolveProgramsPath());
+    // 재생 중 프로그램의 종료 동작이 바뀌어도 타이머는 그대로 — 만료 시
+    // 새 endAction 이 자연스럽게 조회되어 적용된다(별도 재무장 불필요).
 }
 
 // 프로그램 카드 우클릭 → "표시 시간 설정..." — 현재값을 초기값으로 다이얼로그.

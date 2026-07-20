@@ -39,19 +39,21 @@ MediaType guessMediaType(const QString& path) {
 
 QString endActionToString(EndAction a) {
     switch (a) {
-        case EndAction::Loop: return "loop";
-        case EndAction::Stop: return "stop";
-        case EndAction::Hold: return "hold";
-        case EndAction::Next: return "next";
+        case EndAction::Loop:  return "loop";
+        case EndAction::Stop:  return "stop";
+        case EndAction::Hold:  return "hold";
+        case EndAction::Next:  return "next";
+        case EndAction::First: return "first";
     }
     return "loop";
 }
 
 EndAction endActionFromString(const QString& s) {
     const QString v = s.toLower();
-    if (v == "stop") return EndAction::Stop;
-    if (v == "hold") return EndAction::Hold;
-    if (v == "next") return EndAction::Next;
+    if (v == "stop")  return EndAction::Stop;
+    if (v == "hold")  return EndAction::Hold;
+    if (v == "next")  return EndAction::Next;
+    if (v == "first") return EndAction::First;
     return EndAction::Loop;
 }
 

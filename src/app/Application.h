@@ -54,6 +54,7 @@ private slots:
     void onProgramRenameRequested(const QString& id, const QString& newName);
     void onProgramDeleteRequested(const QString& id);
     void onProgramDisplayTimeEditRequested(const QString& id);
+    void onProgramEndActionEditRequested(const QString& id);
 
     // ▶ 미리보기 재생 상태 변화 → 리허설 창 열기/닫기.
     void onPreviewPlayingChanged(bool playing);

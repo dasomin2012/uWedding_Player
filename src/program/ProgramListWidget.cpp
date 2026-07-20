@@ -1,7 +1,9 @@
 #include "ProgramListWidget.h"
 
 #include "Program.h"
+#include "scene/Layer.h"   // EndAction
 
+#include <QAbstractItemModel>
 #include <QAction>
 #include <QDir>
 #include <QFileInfo>
@@ -29,7 +31,10 @@ namespace uwp {
 static const QSize kThumbSize(180, 101);       // 16:9 (LED 캔버스 비율)
 static const QSize kCardSize(212, 172);        // 카드 (썸네일 + 이름 여백)
 // 재생중 상태 배지("ON AIR")용 role — bool, delegate 가 읽음.
-static constexpr int kActiveRole = Qt::UserRole + 1;
+static constexpr int kActiveRole      = Qt::UserRole + 1;
+// endAction 배지용 role — int (EndAction 값). displayTime > 0 일 때만 렌더.
+static constexpr int kEndActionRole   = Qt::UserRole + 2;
+static constexpr int kDisplayTimeRole = Qt::UserRole + 3;
 
 // 썸네일이 없을 때 표시할 회색 박스.
 static QPixmap makeDefaultThumb() {
@@ -181,6 +186,48 @@ public:
             p->drawText(pill, Qt::AlignCenter, label);
         }
 
+        // endAction 뱃지 — 썸네일 내부 하단 우측. displayTime > 0 일 때만
+        // (수동 진행이면 endAction 은 발동 기회가 없어 배지 표시가 오해 유발).
+        const int displaySec = idx.data(kDisplayTimeRole).toInt();
+        if (displaySec > 0) {
+            const int eaInt = idx.data(kEndActionRole).toInt();
+            const auto ea = static_cast<EndAction>(eaInt);
+            QString label;
+            switch (ea) {
+                case EndAction::Loop:  label = QStringLiteral("↻");   break;
+                case EndAction::Stop:  label = QStringLiteral("■");   break;
+                case EndAction::Hold:  label = QStringLiteral("⏸");  break;
+                case EndAction::First:
+                    if (idx.model() && idx.model()->rowCount() > 0)
+                        label = QStringLiteral("→1");
+                    break;
+                case EndAction::Next: {
+                    const int nextRow = idx.row() + 1;
+                    if (idx.model() && nextRow < idx.model()->rowCount())
+                        label = QStringLiteral("→%1").arg(nextRow + 1);
+                    else
+                        label = QStringLiteral("■");   // 마지막 → stop
+                    break;
+                }
+            }
+            if (!label.isEmpty()) {
+                QFont badgeFont = opt.font;
+                badgeFont.setBold(true);
+                badgeFont.setPointSizeF(qMax(8.0, badgeFont.pointSizeF() - 1));
+                p->setFont(badgeFont);
+                QFontMetrics bfm(badgeFont);
+                const int w = qMax(bfm.horizontalAdvance(label) + 10, 26);
+                const int h = bfm.height() + 2;
+                const QRect pill(iconRect.right() - w - 4,
+                                 iconRect.bottom() - h - 4, w, h);
+                p->setPen(Qt::NoPen);
+                p->setBrush(QColor(0, 0, 0, 180));
+                p->drawRoundedRect(pill, h / 2, h / 2);
+                p->setPen(Qt::white);
+                p->drawText(pill, Qt::AlignCenter, label);
+            }
+        }
+
         p->restore();
     }
 
@@ -294,6 +341,8 @@ void ProgramListWidget::setPrograms(const QVector<Program>& programs,
         item->setData(Qt::UserRole, p.id);
         item->setToolTip(p.name);
         item->setData(kActiveRole, false);      // 아래 setActiveProgram 이 갱신
+        item->setData(kEndActionRole,   static_cast<int>(p.endAction));
+        item->setData(kDisplayTimeRole, p.displayTimeSec);
     }
     setActiveProgram(m_activeId);   // 강조 유지
 }
@@ -309,17 +358,19 @@ void ProgramListWidget::selectProgram(const QString& id) {
     }
 }
 
-void ProgramListWidget::updateItem(const QString& id, const QString& name,
+void ProgramListWidget::updateItem(const QString& id, const Program& p,
                                    const QString& thumbAbsPath) {
     for (int i = 0; i < m_list->count(); ++i) {
         QListWidgetItem* it = m_list->item(i);
         if (it->data(Qt::UserRole).toString() != id) continue;
-        it->setText(name.isEmpty() ? id : name);
-        it->setToolTip(name);
+        it->setText(p.name.isEmpty() ? id : p.name);
+        it->setToolTip(p.name);
         QPixmap thumb;
         if (!thumbAbsPath.isEmpty() && QFileInfo::exists(thumbAbsPath))
             thumb.load(thumbAbsPath);
         it->setIcon(QIcon(thumb.isNull() ? makeDefaultThumb() : thumb));
+        it->setData(kEndActionRole,   static_cast<int>(p.endAction));
+        it->setData(kDisplayTimeRole, p.displayTimeSec);
         return;
     }
 }
@@ -342,8 +393,9 @@ void ProgramListWidget::showContextMenu(const QPoint& pos) {
     const QString name = it->text();
 
     QMenu menu(this);
-    QAction* renameAct  = menu.addAction(tr("이름 변경..."));
-    QAction* displayAct = menu.addAction(tr("표시 시간 설정..."));
+    QAction* renameAct    = menu.addAction(tr("이름 변경..."));
+    QAction* displayAct   = menu.addAction(tr("표시 시간 설정..."));
+    QAction* endActionAct = menu.addAction(tr("종료 동작 설정..."));
 
     QAction* chosen = menu.exec(m_list->viewport()->mapToGlobal(pos));
     if (chosen == renameAct) {
@@ -355,6 +407,8 @@ void ProgramListWidget::showContextMenu(const QPoint& pos) {
     } else if (chosen == displayAct) {
         // Application 이 프로그램 조회 + QInputDialog 표시 (현재값을 초기값으로).
         emit displayTimeEditRequested(id);
+    } else if (chosen == endActionAct) {
+        emit endActionEditRequested(id);
     }
 }
 

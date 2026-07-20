@@ -7,7 +7,7 @@
 namespace uwp {
 
 enum class MediaType { Video, Image, Document, Unknown };
-enum class EndAction { Loop, Stop, Hold, Next };
+enum class EndAction { Loop, Stop, Hold, Next, First };
 
 QString   mediaTypeToString(MediaType t);
 MediaType mediaTypeFromString(const QString& s);
