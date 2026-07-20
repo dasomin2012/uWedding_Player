@@ -539,8 +539,10 @@ void ControlWindow::createCentralLayout() {
     connect(m_mediaList, &MediaListWidget::mediaActivated,
             this, [this](const QString& path) {
                 const QSize cs = m_scene->canvasSize();
-                const qreal w = cs.width()  * 0.4;
-                const qreal h = cs.height() * 0.4;
+                // 기본 16:9. 캔버스가 어떤 비율이든 새 레이어는 16:9 로 시작 —
+                // 결혼식장 LED 는 대부분 16:9 소스 재생용.
+                const qreal w = cs.width() * 0.4;
+                const qreal h = w * 9.0 / 16.0;
                 m_scene->addLayer(path,
                     QRectF((cs.width() - w) / 2.0,
                            (cs.height() - h) / 2.0, w, h));

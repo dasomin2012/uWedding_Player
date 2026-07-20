@@ -144,8 +144,9 @@ void PreviewCanvas::dropEvent(QDropEvent* e) {
 
 void PreviewCanvas::addMediaAt(const QString& path, const QPointF& scenePos) {
     const QSize cs = m_model->canvasSize();
-    qreal w = cs.width()  * 0.4;
-    qreal h = cs.height() * 0.4;
+    // 기본 16:9 — MediaListWidget 더블클릭 경로와 일치.
+    const qreal w = cs.width() * 0.4;
+    const qreal h = w * 9.0 / 16.0;
     QRectF r(scenePos.x() - w / 2, scenePos.y() - h / 2, w, h);
     m_model->addLayer(path, r);   // → onLayerAdded
 }

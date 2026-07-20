@@ -35,6 +35,7 @@ private slots:
     void onWidthChanged(int w);        // 비율 고정 시 세로 자동
     void onHeightChanged(int h);       // 비율 고정 시 가로 자동
     void commitGeometry();             // 현 X/Y/W/H 를 모델에 반영
+    void onAspectChanged();            // 화면 비율 X 또는 Y 편집 완료
     void onOpacitySliderReleased();
     void commitDisplayTime(int v);
     void commitEndAction(int idx);
@@ -57,7 +58,9 @@ private:
     QSpinBox*    m_y = nullptr;
     QSpinBox*    m_w = nullptr;
     QSpinBox*    m_h = nullptr;
-    QCheckBox*   m_lockAspect = nullptr;  // 비율 고정 (가로↔세로 연동)
+    QSpinBox*    m_aspectW    = nullptr;   // 화면 비율 X (예: 16)
+    QSpinBox*    m_aspectH    = nullptr;   // 화면 비율 Y (예: 9)
+    QCheckBox*   m_lockAspect = nullptr;   // 비율 고정
 
     // 투명도
     QSlider*     m_opacitySlider  = nullptr;   // 0..100 (%)
