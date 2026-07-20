@@ -96,16 +96,7 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     m_opacitySlider->setRange(0, 100);
     m_opacitySlider->setValue(100);
 
-    // ----- 공통 -----
-    m_display = mkSpin(0, 86400);
-    m_display->setSuffix(" 초");
-
-    m_endAction = new QComboBox;
-    m_endAction->addItem("반복 재생",         QVariant::fromValue(EndAction::Loop));
-    m_endAction->addItem("정지",              QVariant::fromValue(EndAction::Stop));
-    m_endAction->addItem("마지막 화면 유지",  QVariant::fromValue(EndAction::Hold));
-    m_endAction->addItem("다음 프로그램으로", QVariant::fromValue(EndAction::Next));
-
+    // ----- 표시 순서 (z-order) -----
     m_btnFront = new QPushButton("맨 앞으로");
     m_btnRaise = new QPushButton("한 칸 앞으로");
     m_btnLower = new QPushButton("한 칸 뒤로");
@@ -140,10 +131,6 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     root->addSpacing(6);
     root->addWidget(m_opacityReadout);
     root->addWidget(m_opacitySlider);
-    auto* form2 = new QFormLayout;
-    form2->addRow("표시 시간", m_display);
-    form2->addRow("재생 끝나면", m_endAction);
-    root->addLayout(form2);
     root->addWidget(new QLabel("표시 순서"));
     root->addLayout(zrow1);
     root->addLayout(zrow2);
@@ -173,10 +160,6 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
 
     connect(m_name, &QLineEdit::editingFinished,
             this, &PropertyPanel::commitName);
-    connect(m_display, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &PropertyPanel::commitDisplayTime);
-    connect(m_endAction, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &PropertyPanel::commitEndAction);
 
     connect(m_btnFront, &QPushButton::clicked, this, [this]{ if(!m_id.isEmpty()) m_model->toFront(m_id); });
     connect(m_btnRaise, &QPushButton::clicked, this, [this]{ if(!m_id.isEmpty()) m_model->raise(m_id); });
@@ -207,7 +190,6 @@ void PropertyPanel::setEnabledAll(bool on) {
         (QWidget*)m_x, (QWidget*)m_y, (QWidget*)m_w, (QWidget*)m_h,
         (QWidget*)m_aspectW, (QWidget*)m_aspectH,
         (QWidget*)m_lockAspect, (QWidget*)m_opacitySlider,
-        (QWidget*)m_display, (QWidget*)m_endAction,
         (QWidget*)m_btnFront, (QWidget*)m_btnRaise,
         (QWidget*)m_btnLower, (QWidget*)m_btnBack,
     };
@@ -239,9 +221,6 @@ void PropertyPanel::loadFrom(const QString& id) {
     m_y->setValue(qRound(l->geometry.y()));
     m_w->setValue(qRound(l->geometry.width()));
     m_h->setValue(qRound(l->geometry.height()));
-    m_display->setValue(l->displayTimeSec);
-    const int eaIdx = m_endAction->findData(QVariant::fromValue(l->endAction));
-    if (eaIdx >= 0) m_endAction->setCurrentIndex(eaIdx);
 
     const int opPct = qBound(0, qRound(l->opacity * 100.0), 100);
     m_opacitySlider->setValue(opPct);
@@ -316,16 +295,6 @@ void PropertyPanel::onOpacitySliderReleased() {
 }
 
 // ---- 공통 ------------------------------------------------------
-void PropertyPanel::commitDisplayTime(int v) {
-    if (m_loading || m_id.isEmpty()) return;
-    m_model->setDisplayTime(m_id, v);
-}
-
-void PropertyPanel::commitEndAction(int idx) {
-    if (m_loading || m_id.isEmpty() || idx < 0) return;
-    m_model->setEndAction(m_id, m_endAction->itemData(idx).value<EndAction>());
-}
-
 void PropertyPanel::commitName() {
     if (m_loading || m_id.isEmpty()) return;
     m_model->setName(m_id, m_name->text());

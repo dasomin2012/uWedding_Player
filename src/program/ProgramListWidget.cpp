@@ -342,7 +342,8 @@ void ProgramListWidget::showContextMenu(const QPoint& pos) {
     const QString name = it->text();
 
     QMenu menu(this);
-    QAction* renameAct = menu.addAction(tr("이름 변경..."));
+    QAction* renameAct  = menu.addAction(tr("이름 변경..."));
+    QAction* displayAct = menu.addAction(tr("표시 시간 설정..."));
 
     QAction* chosen = menu.exec(m_list->viewport()->mapToGlobal(pos));
     if (chosen == renameAct) {
@@ -351,6 +352,9 @@ void ProgramListWidget::showContextMenu(const QPoint& pos) {
             this, tr("프로그램 이름 변경"), tr("이름:"),
             QLineEdit::Normal, name, &ok);
         if (ok && !nn.isEmpty()) emit renameRequested(id, nn);
+    } else if (chosen == displayAct) {
+        // Application 이 프로그램 조회 + QInputDialog 표시 (현재값을 초기값으로).
+        emit displayTimeEditRequested(id);
     }
 }
 

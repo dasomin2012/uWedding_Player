@@ -49,6 +49,7 @@ private slots:
     void onProgramPlayRequested(const QString& id);            // 더블클릭/Play: Take
     void onProgramRenameRequested(const QString& id, const QString& newName);
     void onProgramDeleteRequested(const QString& id);
+    void onProgramDisplayTimeEditRequested(const QString& id);
 
 private:
     QString resolveSettingsPath() const;
