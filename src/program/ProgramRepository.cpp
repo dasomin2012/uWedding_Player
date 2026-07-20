@@ -34,6 +34,13 @@ QString ProgramRepository::makeUniqueId() const {
     }
 }
 
+// Phase A: 새 Page 에 부여할 UUID 8-hex. 프로그램 스코프에서 고유하면 충분 —
+// 구조체 유효성이 프로그램 내부라 전역 유일성 대신 확률적 유일성으로 충분.
+QString ProgramRepository::makePageId() {
+    const quint32 r = QRandomGenerator::global()->generate();
+    return QString("page_%1").arg(r, 8, 16, QChar('0'));
+}
+
 void ProgramRepository::add(const Program& p) {
     m_programs.push_back(p);
     emit programAdded(p.id);
@@ -118,11 +125,38 @@ bool ProgramRepository::load(const QString& path) {
         p.name             = o.value("name").toString();
         p.thumbnailRelPath = o.value("thumbnail").toString();
         p.novastarPresetId = o.value("novastar_preset_id").toString();
-        p.displayTimeSec   = o.value("display_time_sec").toInt(0);
         p.endAction        = endActionFromString(o.value("end_action").toString());
-        p.layers           = SceneSerializer::layersFromJson(
-                                 o.value("layers").toArray());
         if (p.id.isEmpty()) continue;
+
+        // UI-D Phase A: pages 배열 파싱. 구 포맷(program 레벨 layers +
+        // display_time_sec) 자동 마이그레이션 → 단일 페이지로 감싸기.
+        p.pages.clear();   // 기본 invariant 페이지 제거 (아래에서 최소 1개 보장)
+        if (o.contains("pages") && o.value("pages").isArray()) {
+            const QJsonArray pagesArr = o.value("pages").toArray();
+            for (const QJsonValue& pv : pagesArr) {
+                const QJsonObject po = pv.toObject();
+                Page pg;
+                pg.id               = po.value("id").toString();
+                if (pg.id.isEmpty()) pg.id = makePageId();
+                pg.name             = po.value("name").toString();
+                pg.thumbnailRelPath = po.value("thumbnail").toString();
+                pg.displayTimeSec   = po.value("display_time_sec").toInt(0);
+                pg.layers           = SceneSerializer::layersFromJson(
+                                          po.value("layers").toArray());
+                p.pages.push_back(pg);
+            }
+        }
+        if (p.pages.isEmpty()) {
+            // 구 포맷 마이그레이션 또는 완전 빈 프로그램 → 단일 페이지.
+            Page pg;
+            pg.id             = makePageId();
+            pg.displayTimeSec = o.value("display_time_sec").toInt(0);
+            pg.layers         = SceneSerializer::layersFromJson(
+                                    o.value("layers").toArray());
+            // 프로그램 대표 썸네일을 초기 페이지에도 공유(마이그레이션 편의).
+            pg.thumbnailRelPath = p.thumbnailRelPath;
+            p.pages.push_back(pg);
+        }
         m_programs.push_back(p);
     }
     qInfo() << "ProgramRepository: loaded" << m_programs.size()
@@ -139,9 +173,21 @@ bool ProgramRepository::save(const QString& path) const {
         o["name"]               = p.name;
         o["thumbnail"]          = p.thumbnailRelPath;
         o["novastar_preset_id"] = p.novastarPresetId;
-        o["display_time_sec"]   = p.displayTimeSec;
         o["end_action"]         = endActionToString(p.endAction);
-        o["layers"]             = SceneSerializer::layersToJson(p.layers);
+
+        // UI-D Phase A: pages 배열로 저장. 구 포맷 layers/display_time_sec 은
+        // 저장하지 않음 — 다음 load 부터는 순수 신 포맷.
+        QJsonArray pagesArr;
+        for (const Page& pg : p.pages) {
+            QJsonObject po;
+            po["id"]               = pg.id;
+            po["name"]             = pg.name;
+            po["thumbnail"]        = pg.thumbnailRelPath;
+            po["display_time_sec"] = pg.displayTimeSec;
+            po["layers"]           = SceneSerializer::layersToJson(pg.layers);
+            pagesArr.append(po);
+        }
+        o["pages"] = pagesArr;
         arr.append(o);
     }
     QJsonObject root;

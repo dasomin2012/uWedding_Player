@@ -32,6 +32,8 @@ public:
 
     // 중복 없는 신규 id 발번 ("prog_<8hex>")
     QString makeUniqueId() const;
+    // Page 신규 UUID ("page_<8hex>"). 프로그램 스코프 유일성만 필요.
+    static QString makePageId();
 
     // 자동 진행 — 현재 program 다음 id.
     //  Next: 다음 program(마지막이면 "" = stop), Loop: 자기 자신, Stop/Hold: "".

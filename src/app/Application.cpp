@@ -288,8 +288,12 @@ bool Application::initialize() {
         m_currentProgramId = m_editProgramId;
         if (auto* pl = m_controlWindow->programList())
             pl->setActiveProgram(m_currentProgramId);
-        if (p->displayTimeSec > 0 && m_programAdvanceTimer)
-            m_programAdvanceTimer->start(p->displayTimeSec * 1000);
+        // UI-D Phase A: Program 단위 displayTime 은 페이지 0 값으로 위임.
+        //   Phase C 에서 페이지 순회 지원 시 이 로직 재작성.
+        if (!p->pages.isEmpty()
+            && p->pages.first().displayTimeSec > 0
+            && m_programAdvanceTimer)
+            m_programAdvanceTimer->start(p->pages.first().displayTimeSec * 1000);
     });
     connect(m_controlWindow.get(), &ControlWindow::takeModeChanged,
             this, [this](const QString& mode) {
@@ -612,7 +616,8 @@ void Application::onProgramAddRequested() {
 
     m_editProgramId = p.id;                    // 이후 편집은 이 program 에 저장
     if (auto* pl = m_controlWindow->programList()) pl->selectProgram(p.id);
-    m_controlWindow->setPreviewDisplayTime(p.displayTimeSec);   // UI-F
+    // Phase A: 현재는 첫 페이지만 편집 (Phase B/C 에서 페이지 전환 도입).
+    m_controlWindow->setPreviewDisplayTime(p.pages.first().displayTimeSec);
     m_controlWindow->setStatusText(
         tr("Added (editing): %1 — 미디어를 배치하면 자동 저장됩니다").arg(p.name));
 }
@@ -622,10 +627,11 @@ void Application::onProgramSelected(const QString& id) {
     const Program* p = m_programs->find(id);
     if (!p) return;
     m_suppressEditSave = true;
-    m_scene->replaceAll(p->layers);            // Preview/Edit 로드 — Live 무영향(D2)
+    // Phase A: 첫 페이지 layers 를 SceneModel 로 (페이지 전환은 Phase B).
+    m_scene->replaceAll(p->pages.first().layers);
     m_suppressEditSave = false;
     m_editProgramId = id;                      // 편집 대상 전환 → 이후 편집 자동저장
-    m_controlWindow->setPreviewDisplayTime(p->displayTimeSec);   // UI-F
+    m_controlWindow->setPreviewDisplayTime(p->pages.first().displayTimeSec);
     m_controlWindow->setStatusText(tr("Loaded: %1").arg(p->name));
 }
 
@@ -641,7 +647,8 @@ void Application::playProgram(const QString& id) {
     if (!p) return;
 
     m_suppressEditSave = true;
-    m_scene->replaceAll(p->layers);
+    // Phase A: 첫 페이지 layers 만 재생. 페이지 순회는 Phase C.
+    m_scene->replaceAll(p->pages.first().layers);
     m_suppressEditSave = false;
     m_editProgramId    = id;
     m_currentProgramId = id;            // take 전에 설정 → currentNovaPresetId 정확
@@ -652,14 +659,15 @@ void Application::playProgram(const QString& id) {
         pl->setActiveProgram(id);       // 재생중 강조
         pl->selectProgram(id);
     }
-    m_controlWindow->setPreviewDisplayTime(p->displayTimeSec);   // UI-F
+    const int firstPageTime = p->pages.first().displayTimeSec;
+    m_controlWindow->setPreviewDisplayTime(firstPageTime);
 
-    // 자동 진행: displayTimeSec>0 이면 타이머 시작(§R5: Play 에서만 시작).
+    // 자동 진행: 첫 페이지 displayTimeSec>0 이면 타이머 시작.
     if (m_programAdvanceTimer) {
         m_programAdvanceTimer->stop();
-        if (p->displayTimeSec > 0) {
-            m_programAdvanceTimer->start(p->displayTimeSec * 1000);
-            qInfo() << "Program advance armed:" << p->displayTimeSec << "s,"
+        if (firstPageTime > 0) {
+            m_programAdvanceTimer->start(firstPageTime * 1000);
+            qInfo() << "Program advance armed:" << firstPageTime << "s,"
                     << "action=" << endActionToString(p->endAction)
                     << "program=" << p->name;
         }
@@ -726,7 +734,8 @@ void Application::persistEditProgram() {
     const Program* cur = m_programs->find(m_editProgramId);
     if (!cur) { m_editProgramId.clear(); return; }
     Program up = *cur;
-    up.layers = m_scene->layers();             // 현재 편집 내용 반영
+    // Phase A: 편집 대상 = 첫 페이지. Phase B 부터 현재 페이지 인덱스 사용.
+    up.pages.first().layers = m_scene->layers();
 
     if (auto* pc = m_controlWindow->previewCanvas()) {
         const QSize cs = m_scene->canvasSize();
@@ -817,19 +826,22 @@ void Application::onProgramEndActionEditRequested(const QString& id) {
 }
 
 // 프로그램 카드 우클릭 → "표시 시간 설정..." — 현재값을 초기값으로 다이얼로그.
-// 자동 진행(displayTimeSec) + 미리보기 카운트다운(▶) 활성화 여부 모두 지배.
+// Phase A: 첫 페이지의 displayTimeSec 편집 (사실상 "프로그램 시간"과 동등).
+// Phase C 부터는 페이지별 편집 UI 별도 도입, 이 다이얼로그는 페이지 UI 없는
+// 상태의 편의 진입점으로 유지.
 void Application::onProgramDisplayTimeEditRequested(const QString& id) {
     const Program* p = m_programs->find(id);
     if (!p) return;
+    const int curSec = p->pages.first().displayTimeSec;
     bool ok = false;
     const int sec = QInputDialog::getInt(
         m_controlWindow.get(),
         tr("프로그램 표시 시간"),
         tr("자동 진행 초 (0 = 수동 · 최대 86400):"),
-        p->displayTimeSec, 0, 86400, 1, &ok);
-    if (!ok || sec == p->displayTimeSec) return;
+        curSec, 0, 86400, 1, &ok);
+    if (!ok || sec == curSec) return;
     Program up = *p;
-    up.displayTimeSec = sec;
+    up.pages.first().displayTimeSec = sec;
     m_programs->update(up);                   // → programUpdated → 카드 갱신
     m_programs->save(resolveProgramsPath());
     // 편집 대상이면 Preview 툴바 라벨/▶ 활성 즉시 갱신.
@@ -910,8 +922,10 @@ void Application::onPreviewCompleted() {
     switch (p->endAction) {
     case EndAction::Loop:
         // 같은 프로그램 재적용 — 동영상이 처음부터 다시 재생됨.
-        m_rehearsalWindow->applyScene(p->layers);
-        m_controlWindow->restartPreviewCountdown(p->displayTimeSec);
+        //  Phase A: 첫 페이지 기준. Phase C 에서 페이지 순회 지원 시 재구성.
+        m_rehearsalWindow->applyScene(p->pages.first().layers);
+        m_controlWindow->restartPreviewCountdown(
+            p->pages.first().displayTimeSec);
         break;
     case EndAction::Next: {
         const QString nextId = m_programs->nextIdAfter(m_previewProgramId,
@@ -920,16 +934,18 @@ void Application::onPreviewCompleted() {
         const Program* np = m_programs->find(nextId);
         if (!np) { finishSession(); break; }
         m_previewProgramId = nextId;
-        m_rehearsalWindow->applyScene(np->layers);
-        m_controlWindow->restartPreviewCountdown(np->displayTimeSec);
+        m_rehearsalWindow->applyScene(np->pages.first().layers);
+        m_controlWindow->restartPreviewCountdown(
+            np->pages.first().displayTimeSec);
         break;
     }
     case EndAction::First: {
         if (m_programs->count() == 0) { finishSession(); break; }
         const Program& fp = m_programs->programs().first();
         m_previewProgramId = fp.id;
-        m_rehearsalWindow->applyScene(fp.layers);
-        m_controlWindow->restartPreviewCountdown(fp.displayTimeSec);
+        m_rehearsalWindow->applyScene(fp.pages.first().layers);
+        m_controlWindow->restartPreviewCountdown(
+            fp.pages.first().displayTimeSec);
         break;
     }
     case EndAction::Stop:

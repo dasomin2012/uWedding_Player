@@ -342,7 +342,11 @@ void ProgramListWidget::setPrograms(const QVector<Program>& programs,
         item->setToolTip(p.name);
         item->setData(kActiveRole, false);      // 아래 setActiveProgram 이 갱신
         item->setData(kEndActionRole,   static_cast<int>(p.endAction));
-        item->setData(kDisplayTimeRole, p.displayTimeSec);
+        // Phase A: 카드 배지의 "표시 시간" 판정은 첫 페이지 기준.
+        //   Phase C 에서 페이지 순회 도입 시 "합계 시간" 이나 "현재 재생 페이지
+        //   시간" 등으로 재정의 예정.
+        item->setData(kDisplayTimeRole, p.pages.isEmpty() ? 0
+                                                          : p.pages.first().displayTimeSec);
     }
     setActiveProgram(m_activeId);   // 강조 유지
 }
@@ -370,7 +374,8 @@ void ProgramListWidget::updateItem(const QString& id, const Program& p,
             thumb.load(thumbAbsPath);
         it->setIcon(QIcon(thumb.isNull() ? makeDefaultThumb() : thumb));
         it->setData(kEndActionRole,   static_cast<int>(p.endAction));
-        it->setData(kDisplayTimeRole, p.displayTimeSec);
+        it->setData(kDisplayTimeRole, p.pages.isEmpty() ? 0
+                                                        : p.pages.first().displayTimeSec);
         return;
     }
 }
