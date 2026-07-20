@@ -58,6 +58,8 @@ private slots:
 
     // ▶ 미리보기 재생 상태 변화 → 리허설 창 열기/닫기.
     void onPreviewPlayingChanged(bool playing);
+    // 리허설 카운트다운 자연 만료 → 프로그램의 endAction 조회하여 체인 결정.
+    void onPreviewCompleted();
 
 private:
     QString resolveSettingsPath() const;
@@ -109,6 +111,10 @@ private:
 
     // Phase 5b — 현재 편집 대상 program id ("" = 스크래치, 자동저장 안 함).
     QString m_editProgramId;
+
+    // 리허설 세션이 지금 재생중인 program id. m_editProgramId 와 분리 —
+    // 리허설이 Next/First 로 다른 프로그램 재생해도 사용자 편집 대상은 유지.
+    QString m_previewProgramId;
     QTimer* m_editSaveTimer  = nullptr;   // 편집 자동저장 디바운스
     bool    m_suppressEditSave = false;   // 프로그램 로드 중 모델변경을 편집으로 오인 방지
 

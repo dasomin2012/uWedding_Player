@@ -149,6 +149,8 @@ bool Application::initialize() {
     m_rehearsalWindow->installEventFilter(this);
     connect(m_controlWindow.get(), &ControlWindow::previewPlayingChanged,
             this, &Application::onPreviewPlayingChanged);
+    connect(m_controlWindow.get(), &ControlWindow::previewCompleted,
+            this, &Application::onPreviewCompleted);
 
     connect(m_controlWindow.get(), &ControlWindow::selectOutputMonitorRequested,
             this, &Application::onSelectOutputMonitorRequested);
@@ -867,9 +869,11 @@ void Application::onProgramDeleteRequested(const QString& id) {
     m_controlWindow->setStatusText(tr("Deleted: %1").arg(name));
 }
 
-// ▶ 클릭(true) / ⏸·자동완료·리셋(false) 에 반응해 리허설 창 제어.
+// ▶ 클릭(true) / ⏸·리셋(false) 에 반응해 리허설 창 제어.
 //   playing=true  : 현재 SceneModel 스냅샷을 리허설 창에 apply + 창 표시
-//   playing=false : 창 숨김 + 씬 비움(플레이어 반환)
+//                   + 리허설 세션 트래킹용 m_previewProgramId 시작값 설정
+//   playing=false : 창 숨김 + 씬 비움(플레이어 반환) + 세션 트래킹 클리어
+// 자연 만료(auto-complete)는 previewCompleted 로 별도 처리 — endAction 체인.
 void Application::onPreviewPlayingChanged(bool playing) {
     if (!m_rehearsalWindow) return;
     if (playing) {
@@ -878,9 +882,64 @@ void Application::onPreviewPlayingChanged(bool playing) {
         m_rehearsalWindow->show();
         m_rehearsalWindow->raise();
         m_rehearsalWindow->activateWindow();
+        // 리허설 세션 시작 — 현재 편집 대상을 초기 preview 프로그램으로.
+        // 스크래치(m_editProgramId 빔)이면 세션은 열리되 체인 대상 없음.
+        m_previewProgramId = m_editProgramId;
     } else {
         m_rehearsalWindow->applyScene({});      // 플레이어 반환
         m_rehearsalWindow->hide();
+        m_previewProgramId.clear();
+    }
+}
+
+// 카운트다운 자연 만료 시점 — 현재 preview 프로그램의 endAction 조회하여 체인.
+void Application::onPreviewCompleted() {
+    if (!m_rehearsalWindow || !m_controlWindow) return;
+
+    // 스크래치 씬 또는 프로그램이 사라진 경우 → 세션 종료.
+    auto finishSession = [this]{
+        m_rehearsalWindow->applyScene({});
+        m_rehearsalWindow->hide();
+        m_previewProgramId.clear();
+        m_controlWindow->resetPreviewSim();
+    };
+    if (m_previewProgramId.isEmpty()) { finishSession(); return; }
+    const Program* p = m_programs ? m_programs->find(m_previewProgramId) : nullptr;
+    if (!p) { finishSession(); return; }
+
+    switch (p->endAction) {
+    case EndAction::Loop:
+        // 같은 프로그램 재적용 — 동영상이 처음부터 다시 재생됨.
+        m_rehearsalWindow->applyScene(p->layers);
+        m_controlWindow->restartPreviewCountdown(p->displayTimeSec);
+        break;
+    case EndAction::Next: {
+        const QString nextId = m_programs->nextIdAfter(m_previewProgramId,
+                                                        EndAction::Next);
+        if (nextId.isEmpty()) { finishSession(); break; }   // 마지막 → stop
+        const Program* np = m_programs->find(nextId);
+        if (!np) { finishSession(); break; }
+        m_previewProgramId = nextId;
+        m_rehearsalWindow->applyScene(np->layers);
+        m_controlWindow->restartPreviewCountdown(np->displayTimeSec);
+        break;
+    }
+    case EndAction::First: {
+        if (m_programs->count() == 0) { finishSession(); break; }
+        const Program& fp = m_programs->programs().first();
+        m_previewProgramId = fp.id;
+        m_rehearsalWindow->applyScene(fp.layers);
+        m_controlWindow->restartPreviewCountdown(fp.displayTimeSec);
+        break;
+    }
+    case EndAction::Stop:
+        finishSession();
+        break;
+    case EndAction::Hold:
+    default:
+        // 창 유지, 마지막 프레임 그대로. 카운터는 "MM:SS / MM:SS" 로 정지.
+        // 사용자가 창 X 또는 ⏸(현재 ▶로 표시) 로 종료.
+        break;
     }
 }
 

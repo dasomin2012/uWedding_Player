@@ -50,6 +50,11 @@ public slots:
     // 외부(예: 리허설 창 close event)에서 미리보기 상태를 강제 리셋.
     void resetPreviewSim();
 
+    // 리허설 체인 (Loop/Next/First) 연속 재생 시 카운트다운만 재시작.
+    //   newTotalSec: 다음 프로그램의 displayTimeSec (0 = 새 프로그램이 수동
+    //   진행 — 카운트다운 정지, 창은 유지). 창 열림/닫힘 상태는 건드리지 않음.
+    void restartPreviewCountdown(int newTotalSec);
+
 public:
     ProgramListWidget* programList()  const { return m_programList; }  // Application 와이어링용
     PreviewCanvas*     previewCanvas() const { return m_canvas; }      // 썸네일 렌더용
@@ -64,6 +69,9 @@ signals:
     void takeModeChanged(const QString& mode);   // "cut" | "fade"
     // 미리보기 재생 상태 변화 — Application 이 리허설 창을 열고/닫는 트리거.
     void previewPlayingChanged(bool playing);
+    // 카운트다운이 자연 만료 (auto-complete). Application 이 프로그램의
+    // endAction 을 조회해 체인(반복/다음/첫)·정지·유지 중 하나를 실행.
+    void previewCompleted();
 
 private:
     void createMenus();

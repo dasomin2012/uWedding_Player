@@ -746,14 +746,33 @@ void ControlWindow::tickPreviewPlay() {
         m_previewRunning = false;
         m_btnPreviewPlay->setText(QStringLiteral("▶"));
         updateTimeLabel();
-        emit previewPlayingChanged(false);   // 리허설 창도 닫힘
-        // 만료 후 잠시 유지 → 0 으로 되돌림 (편집자가 결과를 인지할 시간)
-        QTimer::singleShot(600, this, [this]{
-            if (!m_previewRunning) { m_previewElapsedMs = 0; updateTimeLabel(); }
-        });
+        // 자연 만료 → Application 이 프로그램의 endAction 조회하여 후속 결정.
+        //   Loop/Next/First: restartPreviewCountdown 호출로 체인 계속.
+        //   Stop:            resetPreviewSim → 창 닫힘.
+        //   Hold:            아무것도 안 함 → 창 유지, 카운터 "00:30 / 00:30".
+        // 이전 구현은 previewPlayingChanged(false) 를 발화해 무조건 창을 닫았음.
+        emit previewCompleted();
         return;
     }
     updateTimeLabel();
+}
+
+void ControlWindow::restartPreviewCountdown(int newTotalSec) {
+    m_previewTotalSec  = newTotalSec;
+    m_previewElapsedMs = 0;
+    if (!m_previewTimer) return;
+    if (newTotalSec > 0) {
+        m_previewTimer->start();
+        m_previewRunning = true;
+        if (m_btnPreviewPlay) m_btnPreviewPlay->setText(QStringLiteral("⏸"));
+    } else {
+        // 새 프로그램이 수동 진행이면 타이머 정지, 창은 유지.
+        m_previewTimer->stop();
+        m_previewRunning = false;
+        if (m_btnPreviewPlay) m_btnPreviewPlay->setText(QStringLiteral("▶"));
+    }
+    updateTimeLabel();
+    // 창 열림/닫힘 상태 신호는 발화하지 않음 — 세션 자체는 그대로 진행.
 }
 
 void ControlWindow::resetPreviewSim() {
