@@ -7,6 +7,8 @@
 #include "editor/MediaListWidget.h"
 #include "program/ProgramListWidget.h"
 
+#include <QStyle>
+
 #include <QAction>
 #include <QApplication>
 #include <QFrame>
@@ -646,8 +648,9 @@ void ControlWindow::createCentralLayout() {
 }
 
 // UI-F: 중앙 상단 Preview 패널 조립. 인라인 툴바 + 캔버스.
-//   [▶]   표시 시간: MM:SS         (여백)
+//   [▶]   표시 시간: MM:SS                                        [🗑]
 //  + 레이어 버튼은 미디어 라이브러리 드래그앤드롭과 중복이라 배치하지 않음.
+//  🗑 = 선택 레이어 삭제. 이전엔 속성 패널 하단에 있어 스크롤해 찾아야 했다.
 QWidget* ControlWindow::buildPreviewPane() {
     auto* box = new QWidget;
     auto* v = new QVBoxLayout(box);
@@ -666,10 +669,31 @@ QWidget* ControlWindow::buildPreviewPane() {
     m_timeLabel = new QLabel(tr("표시 시간: —"));
     m_timeLabel->setObjectName("PreviewTimeLabel");
 
+    // 우측 끝: 선택 레이어 삭제 (플랫폼 네이티브 휴지통 아이콘).
+    m_btnDeleteLayer = new QPushButton;
+    m_btnDeleteLayer->setObjectName("PreviewToolBtn");
+    m_btnDeleteLayer->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
+    m_btnDeleteLayer->setToolTip(tr("선택된 레이어 삭제"));
+    m_btnDeleteLayer->setEnabled(false);   // 선택 있을 때만 활성
+    connect(m_btnDeleteLayer, &QPushButton::clicked, this, [this]{
+        if (m_scene && !m_scene->selectedId().isEmpty())
+            m_scene->removeLayer(m_scene->selectedId());
+    });
+    // 선택 상태 → 버튼 활성 동기화. 삭제 후 선택 해제되면 다시 비활성.
+    if (m_scene) {
+        connect(m_scene, &SceneModel::selectionChanged, this,
+                [this](const QString& id) {
+                    if (m_btnDeleteLayer) m_btnDeleteLayer->setEnabled(!id.isEmpty());
+                });
+        // 초기 상태 반영(스크래치 로드 등)
+        m_btnDeleteLayer->setEnabled(!m_scene->selectedId().isEmpty());
+    }
+
     toolbar->addWidget(m_btnPreviewPlay);
     toolbar->addSpacing(8);
     toolbar->addWidget(m_timeLabel);
     toolbar->addStretch(1);
+    toolbar->addWidget(m_btnDeleteLayer);   // 우측 정렬
 
     v->addLayout(toolbar);
     v->addWidget(m_canvas, 1);

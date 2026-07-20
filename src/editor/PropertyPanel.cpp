@@ -78,9 +78,6 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     auto* zrow1 = new QHBoxLayout; zrow1->addWidget(m_btnFront); zrow1->addWidget(m_btnRaise);
     auto* zrow2 = new QHBoxLayout; zrow2->addWidget(m_btnLower); zrow2->addWidget(m_btnBack);
 
-    m_btnDelete = new QPushButton("레이어 삭제");
-    m_btnDelete->setStyleSheet("color:#c33;");
-
     // ----- 레이아웃 -----
     auto* form = new QFormLayout;
     form->addRow("미디어", m_media);
@@ -103,8 +100,6 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     root->addWidget(new QLabel("표시 순서"));
     root->addLayout(zrow1);
     root->addLayout(zrow2);
-    root->addSpacing(8);
-    root->addWidget(m_btnDelete);
     root->addStretch();
     setMinimumWidth(240);
 
@@ -141,7 +136,6 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     connect(m_btnRaise, &QPushButton::clicked, this, [this]{ if(!m_id.isEmpty()) m_model->raise(m_id); });
     connect(m_btnLower, &QPushButton::clicked, this, [this]{ if(!m_id.isEmpty()) m_model->lower(m_id); });
     connect(m_btnBack,  &QPushButton::clicked, this, [this]{ if(!m_id.isEmpty()) m_model->toBack(m_id); });
-    connect(m_btnDelete,&QPushButton::clicked, this, [this]{ if(!m_id.isEmpty()) m_model->removeLayer(m_id); });
 
     // "비율 고정" 상태를 모델에 동기화 → 마우스 드래그 리사이즈(LayerItem)도
     // 같은 플래그를 읽어 종횡비를 유지한다(스피너 연동과 단일 소스).
@@ -159,7 +153,7 @@ void PropertyPanel::setEnabledAll(bool on) {
         (QWidget*)m_lockAspect, (QWidget*)m_opacitySlider,
         (QWidget*)m_display, (QWidget*)m_endAction,
         (QWidget*)m_btnFront, (QWidget*)m_btnRaise,
-        (QWidget*)m_btnLower, (QWidget*)m_btnBack, (QWidget*)m_btnDelete,
+        (QWidget*)m_btnLower, (QWidget*)m_btnBack,
     };
     for (QWidget* w : widgets) if (w) w->setEnabled(on);
 }
