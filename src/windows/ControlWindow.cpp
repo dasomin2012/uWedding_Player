@@ -5,6 +5,7 @@
 #include "editor/PreviewCanvas.h"
 #include "editor/PropertyPanel.h"
 #include "editor/MediaListWidget.h"
+#include "program/PageListWidget.h"
 #include "program/ProgramListWidget.h"
 
 #include <QStyle>
@@ -24,6 +25,7 @@
 #include <QSettings>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
@@ -221,6 +223,25 @@ QScrollBar::handle:horizontal:hover { background: #8a5a3b; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 
 QLabel#LiveMirror { background: #0e0d0c; color: #6a5f55; border-radius: 6px; }
+
+QTabWidget#LeftTabs::pane {
+    background: transparent;
+    border: 0;
+    padding-top: 4px;
+}
+QTabWidget#LeftTabs QTabBar::tab {
+    background: transparent;
+    color: #8a7d70;
+    padding: 6px 14px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    font-weight: 600;
+}
+QTabWidget#LeftTabs QTabBar::tab:hover { color: #1c1512; }
+QTabWidget#LeftTabs QTabBar::tab:selected {
+    color: #1c1512;
+    border-bottom: 2px solid #8a5a3b;
+}
 )";
 
 const char* kQssDark = R"(
@@ -406,6 +427,25 @@ QScrollBar::handle:horizontal:hover { background: #c8a37a; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 
 QLabel#LiveMirror { background: #050403; color: #4a4038; border-radius: 6px; }
+
+QTabWidget#LeftTabs::pane {
+    background: transparent;
+    border: 0;
+    padding-top: 4px;
+}
+QTabWidget#LeftTabs QTabBar::tab {
+    background: transparent;
+    color: #8f857a;
+    padding: 6px 14px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    font-weight: 600;
+}
+QTabWidget#LeftTabs QTabBar::tab:hover { color: #e8ddd0; }
+QTabWidget#LeftTabs QTabBar::tab:selected {
+    color: #e8ddd0;
+    border-bottom: 2px solid #c8a37a;
+}
 )";
 
 // ---- 패널 래퍼 헬퍼: 내부 위젯을 둥근 프레임 + 선택적 상단 헤더에 담아 반환 ----
@@ -513,6 +553,8 @@ void ControlWindow::createCentralLayout() {
     // ----- 미디어 리스트 -----
     m_mediaList = new MediaListWidget(m_settings, m_snapshots);
     m_mediaList->setMinimumWidth(200);
+    // UI-D Phase B: 좌측 컬럼 [페이지] 탭 — 현재 편집 프로그램의 페이지 목록.
+    m_pageList = new PageListWidget;
     connect(m_mediaList, &MediaListWidget::mediaActivated,
             this, [this](const QString& path) {
                 const QSize cs = m_scene->canvasSize();
@@ -570,8 +612,13 @@ void ControlWindow::createCentralLayout() {
 
     // ----- 컬럼 조립 -----
 
-    // LEFT: 미디어 (자체 헤더가 있으므로 외부 타이틀 없이 프레임만)
-    auto* leftPanel = wrapPanel(m_mediaList);
+    // LEFT: [미디어][페이지] QTabWidget — 편집자가 상황에 따라 스위칭.
+    //   미디어 = 파일 소스 관리, 페이지 = 현재 프로그램의 페이지 목록.
+    auto* leftTabs = new QTabWidget;
+    leftTabs->setObjectName("LeftTabs");
+    leftTabs->addTab(m_mediaList, tr("미디어"));
+    leftTabs->addTab(m_pageList,  tr("페이지"));
+    auto* leftPanel = wrapPanel(leftTabs);
 
     // CENTER TOP: Preview (툴바 + 캔버스)
     auto* previewPanel = wrapPanel(buildPreviewPane(), tr("작업 캔버스"));

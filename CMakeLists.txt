@@ -141,6 +141,8 @@ set(UWP_SOURCES
     src/program/ProgramRepository.cpp
     src/program/ProgramListWidget.h
     src/program/ProgramListWidget.cpp
+    src/program/PageListWidget.h
+    src/program/PageListWidget.cpp
 
     src/scene/Layer.h
     src/scene/Layer.cpp

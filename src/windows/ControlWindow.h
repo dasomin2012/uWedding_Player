@@ -19,6 +19,7 @@ class PreviewCanvas;
 class PropertyPanel;
 class MediaListWidget;
 class ProgramListWidget;
+class PageListWidget;
 
 // Phase 3 운용자 화면.
 //   +-----------+----------------------+----------+
@@ -57,6 +58,7 @@ public slots:
 
 public:
     ProgramListWidget* programList()  const { return m_programList; }  // Application 와이어링용
+    PageListWidget*    pageList()     const { return m_pageList; }     // UI-D Phase B
     PreviewCanvas*     previewCanvas() const { return m_canvas; }      // 썸네일 렌더용
 
 signals:
@@ -86,6 +88,7 @@ private:
     SnapshotCache*   m_snapshots  = nullptr;
 
     MediaListWidget* m_mediaList  = nullptr;
+    PageListWidget*  m_pageList   = nullptr;   // UI-D Phase B: 좌측 [페이지] 탭
     PreviewCanvas*   m_canvas     = nullptr;
     PropertyPanel*   m_property   = nullptr;
     QLabel*            m_liveMirror = nullptr;

@@ -56,6 +56,14 @@ private slots:
     void onProgramDisplayTimeEditRequested(const QString& id);
     void onProgramEndActionEditRequested(const QString& id);
 
+    // UI-D Phase B — 페이지 관리 (현재 편집 대상 프로그램 안).
+    void onPageAddRequested();
+    void onPageSelected(const QString& pageId);
+    void onPageDeleteRequested(const QString& pageId);
+    void onPageRenameRequested(const QString& pageId, const QString& newName);
+    void onPageMoveUpRequested(const QString& pageId);
+    void onPageMoveDownRequested(const QString& pageId);
+
     // ▶ 미리보기 재생 상태 변화 → 리허설 창 열기/닫기.
     void onPreviewPlayingChanged(bool playing);
     // 리허설 카운트다운 자연 만료 → 프로그램의 endAction 조회하여 체인 결정.
@@ -111,6 +119,10 @@ private:
 
     // Phase 5b — 현재 편집 대상 program id ("" = 스크래치, 자동저장 안 함).
     QString m_editProgramId;
+    // UI-D Phase B — 편집 대상 프로그램 내 현재 편집 페이지 id.
+    //   프로그램이 로드되면 pages.first().id 로 초기화.
+    //   페이지 스위치·페이지 삭제·프로그램 언로드 시 갱신.
+    QString m_editPageId;
 
     // 리허설 세션이 지금 재생중인 program id. m_editProgramId 와 분리 —
     // 리허설이 Next/First 로 다른 프로그램 재생해도 사용자 편집 대상은 유지.

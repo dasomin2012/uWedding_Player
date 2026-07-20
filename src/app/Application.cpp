@@ -11,6 +11,7 @@
 #include "novastar/NovaStarController.h"
 #include "program/ProgramRepository.h"
 #include "program/ProgramListWidget.h"
+#include "program/PageListWidget.h"
 #include "editor/PreviewCanvas.h"
 
 #if defined(UWP_HAS_OBS)
@@ -197,6 +198,21 @@ bool Application::initialize() {
                 this, &Application::onProgramDisplayTimeEditRequested);
         connect(pl, &ProgramListWidget::endActionEditRequested,
                 this, &Application::onProgramEndActionEditRequested);
+    }
+    // UI-D Phase B — 페이지 리스트 배선.
+    if (auto* pgl = m_controlWindow->pageList()) {
+        connect(pgl, &PageListWidget::addRequested,
+                this, &Application::onPageAddRequested);
+        connect(pgl, &PageListWidget::pageSelected,
+                this, &Application::onPageSelected);
+        connect(pgl, &PageListWidget::deleteRequested,
+                this, &Application::onPageDeleteRequested);
+        connect(pgl, &PageListWidget::renameRequested,
+                this, &Application::onPageRenameRequested);
+        connect(pgl, &PageListWidget::moveUpRequested,
+                this, &Application::onPageMoveUpRequested);
+        connect(pgl, &PageListWidget::moveDownRequested,
+                this, &Application::onPageMoveDownRequested);
     }
     // 부재 시 빈 리스트로 시작(에러 아님). 손상 시 .bak 백업 후 빈 리스트.
     m_programs->load(resolveProgramsPath());
@@ -590,14 +606,15 @@ void Application::onProgramAddRequested() {
     p.id        = m_programs->makeUniqueId();
     p.name      = tr("Program %1").arg(m_programs->count() + 1);
     p.endAction = EndAction::Hold;            // 자동진행 기본=정지(안전, D5)
-    // 레이어 없음(빈 프로그램). 편집이 채운다.
+    // 기본 페이지 1개 (Program{} 초기화로 이미 존재) 에 UUID 발번.
+    p.pages.first().id = ProgramRepository::makePageId();
 
     // Preview 를 비워 편집 시작점으로. (로드성 변경이므로 자동저장 억제)
     m_suppressEditSave = true;
     m_scene->clear();
     m_suppressEditSave = false;
 
-    // 빈 캔버스 썸네일 1회 렌더
+    // 빈 캔버스 썸네일 1회 렌더 — 프로그램 대표 = 첫 페이지 썸네일과 동일 파일.
     const QString thumbsRel = QStringLiteral("programs/thumbs");
     QDir().mkpath(dataDir() + "/" + thumbsRel);
     if (auto* pc = m_controlWindow->previewCanvas()) {
@@ -607,16 +624,22 @@ void Application::onProgramAddRequested() {
             ? qMax(1, qRound(320.0 * cs.height() / cs.width())) : 180;
         const QPixmap pm  = pc->renderThumbnail(QSize(tw, th));
         const QString rel = thumbsRel + "/" + p.id + ".png";
-        if (!pm.isNull() && pm.save(dataDir() + "/" + rel, "PNG"))
-            p.thumbnailRelPath = rel;
+        if (!pm.isNull() && pm.save(dataDir() + "/" + rel, "PNG")) {
+            p.thumbnailRelPath          = rel;
+            p.pages.first().thumbnailRelPath = rel;
+        }
     }
 
     m_programs->add(p);                       // → programAdded → 리스트 갱신
     m_programs->save(resolveProgramsPath());
 
     m_editProgramId = p.id;                    // 이후 편집은 이 program 에 저장
+    m_editPageId    = p.pages.first().id;
     if (auto* pl = m_controlWindow->programList()) pl->selectProgram(p.id);
-    // Phase A: 현재는 첫 페이지만 편집 (Phase B/C 에서 페이지 전환 도입).
+    if (auto* pgl = m_controlWindow->pageList()) {
+        pgl->setProgram(&p, dataDir());        // 페이지 탭 갱신
+        pgl->setActivePage(m_editPageId);
+    }
     m_controlWindow->setPreviewDisplayTime(p.pages.first().displayTimeSec);
     m_controlWindow->setStatusText(
         tr("Added (editing): %1 — 미디어를 배치하면 자동 저장됩니다").arg(p.name));
@@ -627,10 +650,16 @@ void Application::onProgramSelected(const QString& id) {
     const Program* p = m_programs->find(id);
     if (!p) return;
     m_suppressEditSave = true;
-    // Phase A: 첫 페이지 layers 를 SceneModel 로 (페이지 전환은 Phase B).
+    // 프로그램 로드 = 그 프로그램의 첫 페이지를 편집 대상으로. 페이지 스위칭은
+    // 이후 onPageSelected 가 담당.
     m_scene->replaceAll(p->pages.first().layers);
     m_suppressEditSave = false;
-    m_editProgramId = id;                      // 편집 대상 전환 → 이후 편집 자동저장
+    m_editProgramId = id;
+    m_editPageId    = p->pages.first().id;
+    if (auto* pgl = m_controlWindow->pageList()) {
+        pgl->setProgram(p, dataDir());
+        pgl->setActivePage(m_editPageId);
+    }
     m_controlWindow->setPreviewDisplayTime(p->pages.first().displayTimeSec);
     m_controlWindow->setStatusText(tr("Loaded: %1").arg(p->name));
 }
@@ -729,13 +758,26 @@ void Application::scheduleEditSave() {
     if (m_editSaveTimer) m_editSaveTimer->start();   // 디바운스 재시작
 }
 
+// 편집 대상 프로그램 안 현재 페이지(m_editPageId) 인덱스. -1 = 없음.
+static int pageIndexOf(const Program& p, const QString& pageId) {
+    for (int i = 0; i < p.pages.size(); ++i)
+        if (p.pages[i].id == pageId) return i;
+    return -1;
+}
+
 void Application::persistEditProgram() {
     if (m_editProgramId.isEmpty()) return;
     const Program* cur = m_programs->find(m_editProgramId);
-    if (!cur) { m_editProgramId.clear(); return; }
+    if (!cur) { m_editProgramId.clear(); m_editPageId.clear(); return; }
     Program up = *cur;
-    // Phase A: 편집 대상 = 첫 페이지. Phase B 부터 현재 페이지 인덱스 사용.
-    up.pages.first().layers = m_scene->layers();
+
+    // 편집 페이지 인덱스 확정 (없으면 첫 페이지로 안전 폴백).
+    int pIdx = pageIndexOf(up, m_editPageId);
+    if (pIdx < 0) {
+        pIdx = 0;
+        if (!up.pages.isEmpty()) m_editPageId = up.pages.first().id;
+    }
+    up.pages[pIdx].layers = m_scene->layers();
 
     if (auto* pc = m_controlWindow->previewCanvas()) {
         const QSize cs = m_scene->canvasSize();
@@ -743,15 +785,28 @@ void Application::persistEditProgram() {
         const int th = (cs.width() > 0)
             ? qMax(1, qRound(320.0 * cs.height() / cs.width())) : 180;
         const QPixmap pm = pc->renderThumbnail(QSize(tw, th));
-        QString rel = up.thumbnailRelPath;
-        if (rel.isEmpty()) rel = QStringLiteral("programs/thumbs/") + up.id + ".png";
-        QDir().mkpath(QFileInfo(dataDir() + "/" + rel).absolutePath());
-        if (!pm.isNull() && pm.save(dataDir() + "/" + rel, "PNG"))
-            up.thumbnailRelPath = rel;
+        // 페이지 썸네일 파일: programs/thumbs/<progId>_<pageId>.png
+        QString pageRel = up.pages[pIdx].thumbnailRelPath;
+        if (pageRel.isEmpty())
+            pageRel = QStringLiteral("programs/thumbs/") + up.id
+                    + "_" + up.pages[pIdx].id + ".png";
+        QDir().mkpath(QFileInfo(dataDir() + "/" + pageRel).absolutePath());
+        if (!pm.isNull() && pm.save(dataDir() + "/" + pageRel, "PNG"))
+            up.pages[pIdx].thumbnailRelPath = pageRel;
+        // 프로그램 대표 썸네일 = 첫 페이지의 썸네일 파일 그대로.
+        //   (편집한 페이지가 첫 페이지가 아니어도 프로그램 카드는 여전히 첫
+        //    페이지 이미지로 보여야 하므로 여기서 갱신하지 않음. 첫 페이지
+        //    편집 시에만 두 경로가 같은 파일을 가리키게 됨.)
+        if (pIdx == 0) up.thumbnailRelPath = pageRel;
     }
 
     m_programs->update(up);                    // → programUpdated → updateItem
     m_programs->save(resolveProgramsPath());
+    // 페이지 리스트에 갱신된 썸네일 반영.
+    if (auto* pgl = m_controlWindow->pageList()) {
+        const Program* np = m_programs->find(m_editProgramId);
+        if (np) { pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId); }
+    }
 }
 
 void Application::flushEditSave() {
@@ -866,10 +921,18 @@ void Application::onProgramDeleteRequested(const QString& id) {
     if (reply != QMessageBox::Yes) return;
 
     if (!thumb.isEmpty()) QFile::remove(dataDir() + "/" + thumb);
+    // 프로그램에 딸린 페이지별 썸네일 정리 (best-effort — 실패해도 무시).
+    for (const Page& pg : p->pages) {
+        if (!pg.thumbnailRelPath.isEmpty() && pg.thumbnailRelPath != thumb)
+            QFile::remove(dataDir() + "/" + pg.thumbnailRelPath);
+    }
     if (m_editProgramId == id) {               // 편집 대상이 삭제됨 → 자동저장 중단
         if (m_editSaveTimer) m_editSaveTimer->stop();
         m_editProgramId.clear();
+        m_editPageId.clear();
         m_controlWindow->setPreviewDisplayTime(-1);   // UI-F
+        if (auto* pgl = m_controlWindow->pageList())
+            pgl->setProgram(nullptr, dataDir());
     }
     if (m_currentProgramId == id) {
         m_currentProgramId.clear();
@@ -967,6 +1030,161 @@ bool Application::eventFilter(QObject* obj, QEvent* event) {
         if (m_controlWindow) m_controlWindow->resetPreviewSim();
     }
     return QObject::eventFilter(obj, event);
+}
+
+// ---- UI-D Phase B — 페이지 관리 슬롯 ---------------------------
+// 편집 대상 프로그램 안에서 페이지를 추가/스위치/삭제/이름변경/순서변경.
+// 공통 패턴:
+//   1) 편집 대상 프로그램 존재 확인 (m_editProgramId)
+//   2) 사본 up 을 만들어 pages 조작
+//   3) m_programs->update(up) + save
+//   4) PageListWidget 재구성 + setActivePage
+//   5) 필요 시 SceneModel 재로드 + Preview 툴바 시간 갱신
+
+void Application::onPageAddRequested() {
+    if (m_editProgramId.isEmpty()) return;
+    flushEditSave();   // 현재 페이지 편집 확정
+    const Program* p = m_programs->find(m_editProgramId);
+    if (!p) return;
+    Program up = *p;
+    Page pg;
+    pg.id = ProgramRepository::makePageId();
+    // 새 페이지는 빈 layers + displayTime 0(수동). 이름 미지정 → 카드에 순번.
+    up.pages.push_back(pg);
+    m_programs->update(up);
+    m_programs->save(resolveProgramsPath());
+
+    // 새 페이지를 편집 대상으로 자동 스위치 — 편집자가 바로 채워넣기 가능.
+    m_editPageId = pg.id;
+    m_suppressEditSave = true;
+    m_scene->clear();
+    m_suppressEditSave = false;
+    m_controlWindow->setPreviewDisplayTime(pg.displayTimeSec);
+    if (auto* pgl = m_controlWindow->pageList()) {
+        const Program* np = m_programs->find(m_editProgramId);
+        if (np) { pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId); }
+    }
+    m_controlWindow->setStatusText(
+        tr("페이지 추가됨 (%1)").arg(up.pages.size()));
+}
+
+void Application::onPageSelected(const QString& pageId) {
+    if (m_editProgramId.isEmpty() || pageId == m_editPageId) return;
+    flushEditSave();   // 이전 페이지 편집 확정 (beforeLeaveCurrentPage 패턴)
+    const Program* p = m_programs->find(m_editProgramId);
+    if (!p) return;
+    const int idx = pageIndexOf(*p, pageId);
+    if (idx < 0) return;
+
+    m_editPageId = pageId;
+    m_suppressEditSave = true;
+    m_scene->replaceAll(p->pages[idx].layers);
+    m_suppressEditSave = false;
+    m_controlWindow->setPreviewDisplayTime(p->pages[idx].displayTimeSec);
+    if (auto* pgl = m_controlWindow->pageList())
+        pgl->setActivePage(m_editPageId);
+}
+
+void Application::onPageDeleteRequested(const QString& pageId) {
+    if (m_editProgramId.isEmpty()) return;
+    const Program* p = m_programs->find(m_editProgramId);
+    if (!p) return;
+    // 마지막 페이지는 삭제 금지 — invariant(≥1) 유지.
+    if (p->pages.size() <= 1) {
+        QMessageBox::information(m_controlWindow.get(), tr("페이지 삭제"),
+            tr("마지막 페이지는 삭제할 수 없습니다."));
+        return;
+    }
+    const int idx = pageIndexOf(*p, pageId);
+    if (idx < 0) return;
+    const QString pageName = p->pages[idx].name.isEmpty()
+        ? QString::number(idx + 1) : p->pages[idx].name;
+    const auto reply = QMessageBox::question(
+        m_controlWindow.get(), tr("페이지 삭제"),
+        tr("페이지 \"%1\" 을(를) 삭제할까요?").arg(pageName));
+    if (reply != QMessageBox::Yes) return;
+
+    // 편집 대상 페이지 삭제 시: 삭제할 페이지의 씬은 폐기 → 자동저장 억제 후
+    //   인접(이전 우선, 없으면 다음) 페이지로 자동 스위치.
+    const bool wasEdit = (pageId == m_editPageId);
+    Program up = *p;
+    // 페이지 썸네일 파일 정리 (best-effort).
+    if (!up.pages[idx].thumbnailRelPath.isEmpty()
+        && up.pages[idx].thumbnailRelPath != up.thumbnailRelPath) {
+        QFile::remove(dataDir() + "/" + up.pages[idx].thumbnailRelPath);
+    }
+    up.pages.remove(idx);
+    // 첫 페이지가 삭제되었으면 프로그램 대표 썸네일도 새 첫 페이지로.
+    if (idx == 0 && !up.pages.isEmpty())
+        up.thumbnailRelPath = up.pages.first().thumbnailRelPath;
+    m_programs->update(up);
+    m_programs->save(resolveProgramsPath());
+
+    if (wasEdit) {
+        const int newIdx = qMin(idx, up.pages.size() - 1);
+        m_editPageId = up.pages[newIdx].id;
+        m_suppressEditSave = true;
+        m_scene->replaceAll(up.pages[newIdx].layers);
+        m_suppressEditSave = false;
+        m_controlWindow->setPreviewDisplayTime(up.pages[newIdx].displayTimeSec);
+    }
+    if (auto* pgl = m_controlWindow->pageList()) {
+        const Program* np = m_programs->find(m_editProgramId);
+        if (np) { pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId); }
+    }
+}
+
+void Application::onPageRenameRequested(const QString& pageId,
+                                         const QString& newName) {
+    if (m_editProgramId.isEmpty()) return;
+    const Program* p = m_programs->find(m_editProgramId);
+    if (!p) return;
+    const int idx = pageIndexOf(*p, pageId);
+    if (idx < 0) return;
+    if (p->pages[idx].name == newName) return;
+    Program up = *p;
+    up.pages[idx].name = newName;
+    m_programs->update(up);
+    m_programs->save(resolveProgramsPath());
+    if (auto* pgl = m_controlWindow->pageList()) {
+        const Program* np = m_programs->find(m_editProgramId);
+        if (np) { pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId); }
+    }
+}
+
+void Application::onPageMoveUpRequested(const QString& pageId) {
+    if (m_editProgramId.isEmpty()) return;
+    const Program* p = m_programs->find(m_editProgramId);
+    if (!p) return;
+    const int idx = pageIndexOf(*p, pageId);
+    if (idx <= 0) return;   // 이미 맨 위
+    Program up = *p;
+    std::swap(up.pages[idx - 1], up.pages[idx]);
+    // 첫 페이지 스왑 시 프로그램 대표 썸네일 갱신.
+    up.thumbnailRelPath = up.pages.first().thumbnailRelPath;
+    m_programs->update(up);
+    m_programs->save(resolveProgramsPath());
+    if (auto* pgl = m_controlWindow->pageList()) {
+        const Program* np = m_programs->find(m_editProgramId);
+        if (np) { pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId); }
+    }
+}
+
+void Application::onPageMoveDownRequested(const QString& pageId) {
+    if (m_editProgramId.isEmpty()) return;
+    const Program* p = m_programs->find(m_editProgramId);
+    if (!p) return;
+    const int idx = pageIndexOf(*p, pageId);
+    if (idx < 0 || idx + 1 >= p->pages.size()) return;   // 이미 맨 아래
+    Program up = *p;
+    std::swap(up.pages[idx + 1], up.pages[idx]);
+    up.thumbnailRelPath = up.pages.first().thumbnailRelPath;
+    m_programs->update(up);
+    m_programs->save(resolveProgramsPath());
+    if (auto* pgl = m_controlWindow->pageList()) {
+        const Program* np = m_programs->find(m_editProgramId);
+        if (np) { pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId); }
+    }
 }
 
 } // namespace uwp
