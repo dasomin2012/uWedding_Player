@@ -11,7 +11,9 @@
 #include <QStyle>
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
+#include <QFile>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -530,6 +532,63 @@ QWidget* wrapPanel(QWidget* content, const QString& title = QString()) {
     return frame;
 }
 
+// ---- 외부 QSS 테마용 헬퍼 --------------------------------------------
+//   외부 QSS(GTRONICK Aqua/ElegantDark)는 일반 QPushButton 룰만 있어
+//   TAKE/BLACK/Fade 처럼 오브젝트이름으로 특수화한 안전 버튼들이 밋밋해진다.
+//   외부 테마 뒤에 이 스니펫을 붙여 "빨간 TAKE / 검정 BLACK 토글 / 진한 Fade"
+//   식별성을 항상 유지 — 오조작 방지 목적.
+const char* kEssentialOverrides = R"(
+QPushButton#TakeButton {
+    background: #9d2a1f;
+    color: #ffffff;
+    border: 0;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: 800;
+    padding: 14px 28px;
+    letter-spacing: 0.08em;
+}
+QPushButton#TakeButton:hover  { background: #b23629; }
+QPushButton#TakeButton:pressed { background: #7d1f16; }
+
+QPushButton#TransButton {
+    background: #3d342d;
+    color: #f5ede0;
+    border: 0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 14px 6px;
+    letter-spacing: 0.04em;
+}
+QPushButton#TransButton:hover  { background: #4d423a; }
+QPushButton#TransButton:pressed { background: #2a2320; }
+
+QPushButton#BlackButton {
+    background: #ffffff;
+    color: #1c1512;
+    border: 1px solid #d3c8b8;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 800;
+    padding: 14px 4px;
+    letter-spacing: 0.05em;
+}
+QPushButton#BlackButton:hover  { background: #f5ede0; border-color: #b98a5e; }
+QPushButton#BlackButton:pressed { background: #ece0cc; }
+QPushButton#BlackButton:checked {
+    background: #000000;
+    color: #ffffff;
+    border-color: #000000;
+}
+)";
+
+QString loadQssFromResource(const QString& path) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    return QString::fromUtf8(f.readAll());
+}
+
 } // namespace
 
 // ---- ControlWindow ----------------------------------------------
@@ -593,11 +652,31 @@ void ControlWindow::createMenus() {
             this, &ControlWindow::playTestVideoRequested);
     toolsMenu->addSeparator();
 
-    // UI-B: 다크 모드 토글
-    m_darkThemeAct = toolsMenu->addAction(tr("다크 모드(&D)"));
-    m_darkThemeAct->setCheckable(true);
-    m_darkThemeAct->setShortcut(QKeySequence("Ctrl+Shift+D"));
-    connect(m_darkThemeAct, &QAction::triggered, this, &ControlWindow::toggleTheme);
+    // ----- 테마 서브메뉴 -----------------------------------------
+    //   내장 2개(밝은/어두운) + 외부 QSS 2개(ElegantDark/Aqua, GTRONICK/QSS MIT).
+    //   QActionGroup exclusive 로 라디오 동작. QSettings ui/theme 에 id 저장.
+    auto* themeMenu  = toolsMenu->addMenu(tr("테마(&M)"));
+    auto* themeGroup = new QActionGroup(this);
+    themeGroup->setExclusive(true);
+    const struct { const char* id; const char* label; } kThemes[] = {
+        {"light",       "밝은"},
+        {"dark",        "어두운"},
+        {"elegantdark", "ElegantDark"},
+        {"aqua",        "Aqua"},
+    };
+    for (const auto& t : kThemes) {
+        auto* a = themeMenu->addAction(tr(t.label));
+        a->setCheckable(true);
+        a->setData(QString::fromLatin1(t.id));
+        themeGroup->addAction(a);
+        m_themeActions.append(a);
+        connect(a, &QAction::triggered, this, [this, a]{
+            const QString id = a->data().toString();
+            applyTheme(id);
+            QSettings qs("Hanmac", "uWeddingPlayer");
+            qs.setValue("ui/theme", id);
+        });
+    }
 
     // UX-1: 도움말 메뉴 — 지금은 정보 다이얼로그만. 실제 도움말은 UX-5.
     auto* helpMenu = menuBar()->addMenu(tr("도움말(&H)"));
@@ -1014,20 +1093,31 @@ QWidget* ControlWindow::buildLivePanel() {
     return box;
 }
 
-// ---- UI-B: 테마 적용 / 토글 ----------------------------------------
+// ---- 테마 적용 ------------------------------------------------------
+//   지원 id: light / dark (내장 raw string), elegantdark / aqua (외부 QSS 리소스).
+//   외부 QSS 뒤에는 kEssentialOverrides 를 append — TAKE/BLACK/Fade 오조작
+//   방지용 최소 규칙을 항상 유지.
 void ControlWindow::applyTheme(const QString& theme) {
-    m_currentTheme = (theme == "dark") ? "dark" : "light";
-    const char* qss = (m_currentTheme == "dark") ? kQssDark : kQssLight;
-    qApp->setStyleSheet(QString::fromUtf8(qss));
-    if (m_darkThemeAct)
-        m_darkThemeAct->setChecked(m_currentTheme == "dark");
-}
-
-void ControlWindow::toggleTheme() {
-    const QString next = (m_currentTheme == "dark") ? "light" : "dark";
-    applyTheme(next);
-    QSettings qs("Hanmac", "uWeddingPlayer");
-    qs.setValue("ui/theme", next);
+    QString style;
+    QString id = theme;
+    if (id == "dark") {
+        style = QString::fromUtf8(kQssDark);
+    } else if (id == "elegantdark") {
+        style = loadQssFromResource(":/themes/ElegantDark.qss")
+              + QString::fromUtf8(kEssentialOverrides);
+    } else if (id == "aqua") {
+        style = loadQssFromResource(":/themes/Aqua.qss")
+              + QString::fromUtf8(kEssentialOverrides);
+    } else {
+        id    = "light";       // 알 수 없는 값은 기본으로 폴백
+        style = QString::fromUtf8(kQssLight);
+    }
+    m_currentTheme = id;
+    qApp->setStyleSheet(style);
+    // 서브메뉴 라디오 상태 반영.
+    for (QAction* a : m_themeActions) {
+        if (a) a->setChecked(a->data().toString() == m_currentTheme);
+    }
 }
 
 void ControlWindow::setStatusText(const QString& text) {

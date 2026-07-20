@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QList>
 #include <QMainWindow>
 #include <QString>
 
@@ -89,8 +90,7 @@ private:
     void createCentralLayout();
     QWidget* buildLivePanel();              // Live mirror + TAKE 클러스터
     QWidget* buildPreviewPane();            // UI-F: 툴바 + PreviewCanvas
-    void applyTheme(const QString& theme);   // "light" | "dark" — QSS 적용
-    void toggleTheme();                      // 다크 모드 토글 (Tools 메뉴)
+    void applyTheme(const QString& theme);   // "light"|"dark"|"elegantdark"|"aqua"
 
     Settings*        m_settings   = nullptr;
     SceneModel*      m_scene      = nullptr;
@@ -147,9 +147,10 @@ private:
     // resetPreviewSim 은 public slots 로 이동 (외부에서도 강제 리셋 가능)
     void updateTimeLabel();            // 상태 기반 라벨 재작성
 
-    // UI-B: 다크 모드
-    QAction*     m_darkThemeAct = nullptr;
-    QString      m_currentTheme = "light";
+    // 테마: "light" · "dark" (내장) · "elegantdark" · "aqua" (GTRONICK/QSS, MIT).
+    //   도구 → 테마 서브메뉴의 라디오 항목들. applyTheme() 이 checked 상태 동기화.
+    QList<QAction*> m_themeActions;
+    QString         m_currentTheme = "light";
 };
 
 } // namespace uwp

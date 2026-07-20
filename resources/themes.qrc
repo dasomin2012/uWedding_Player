@@ -1,0 +1,16 @@
+<!DOCTYPE RCC>
+<!--
+  Qt 리소스 — 외부 QSS 테마 (GTRONICK/QSS, MIT License).
+    :/themes/ElegantDark.qss  → 짙은 회색 + 소프트 레드 액센트
+    :/themes/Aqua.qss         → 밝은 하늘색 · 글래스 톤
+
+  LICENSE 원문은 resources/themes/LICENSE 에 동봉되어 있고,
+  이 리소스에도 :/themes/LICENSE 로 접근 가능.
+-->
+<RCC version="1.0">
+    <qresource prefix="/themes">
+        <file alias="ElegantDark.qss">themes/ElegantDark.qss</file>
+        <file alias="Aqua.qss">themes/Aqua.qss</file>
+        <file alias="LICENSE">themes/LICENSE</file>
+    </qresource>
+</RCC>

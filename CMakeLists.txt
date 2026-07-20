@@ -159,6 +159,9 @@ set(UWP_SOURCES
     src/editor/MediaListWidget.cpp
     src/editor/PropertyPanel.h
     src/editor/PropertyPanel.cpp
+
+    # 외부 QSS 테마 (GTRONICK/QSS, MIT) — AUTORCC 로 자동 컴파일.
+    resources/themes.qrc
 )
 
 # Phase 1 에서는 console subsystem 으로 빌드하여 qDebug 출력을 보기 쉽게 한다.
