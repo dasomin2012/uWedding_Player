@@ -8,6 +8,7 @@ class QWidget;
 class QPushButton;
 class QAction;
 class QImage;
+class QTimer;
 
 namespace uwp {
 
@@ -85,10 +86,24 @@ private:
 
     // UI-F: Preview 인라인 툴바
     //   + 레이어 버튼은 미디어 라이브러리 드래그앤드롭과 기능 중복이라 제거.
-    QPushButton* m_btnPreviewPlay = nullptr;   // ▶ (placeholder)
+    QPushButton* m_btnPreviewPlay = nullptr;   // ▶ / ⏸ 카운트다운 토글
     QLabel*      m_timeLabel      = nullptr;   // 표시 시간
     QPushButton* m_btnFillCanvas  = nullptr;   // 우측: 선택 레이어 캔버스에 꽉 채우기
     QPushButton* m_btnDeleteLayer = nullptr;   // 우측 끝: 선택 레이어 삭제(휴지통)
+
+    // 미리보기 카운트다운 시뮬레이션 상태.
+    //   Preview 는 정지화상 원칙 유지 — 실제 재생 대신 displayTimeSec 이
+    //   흐를 시간을 시각화하여 편집자가 "이 프로그램이 화면에 얼마나 머무는가"
+    //   를 실시간 감각으로 확인.
+    QTimer* m_previewTimer     = nullptr;
+    int     m_previewTotalSec  = -1;   // <0=프로그램 없음, 0=수동, >0=자동
+    int     m_previewElapsedMs = 0;
+    bool    m_previewRunning   = false;
+
+    void togglePreviewPlay();          // ▶/⏸ 클릭
+    void tickPreviewPlay();            // 100ms 타이머
+    void resetPreviewSim();            // 정지 + 경과 0
+    void updateTimeLabel();            // 상태 기반 라벨 재작성
 
     // UI-B: 다크 모드
     QAction*     m_darkThemeAct = nullptr;

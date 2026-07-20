@@ -24,6 +24,7 @@
 #include <QSettings>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
 
@@ -641,11 +642,24 @@ QWidget* ControlWindow::buildPreviewPane() {
 
     m_btnPreviewPlay = new QPushButton(QStringLiteral("▶"));
     m_btnPreviewPlay->setObjectName("PreviewToolBtn");
-    m_btnPreviewPlay->setEnabled(false);   // placeholder — 후속 트랙
-    m_btnPreviewPlay->setToolTip(tr("미리보기 재생 (구현 예정)"));
+    m_btnPreviewPlay->setEnabled(false);   // 프로그램·displayTimeSec 있어야 활성
+    m_btnPreviewPlay->setToolTip(
+        tr("미리보기 재생 — 표시 시간이 흐를 시간을 시각화 (실제 송출 아님)"));
+    connect(m_btnPreviewPlay, &QPushButton::clicked,
+            this, &ControlWindow::togglePreviewPlay);
+
+    // 100ms 틱 — 초 단위 표시라 1s 로도 충분하지만 pause 반응성/정확도 확보용.
+    m_previewTimer = new QTimer(this);
+    m_previewTimer->setInterval(100);
+    connect(m_previewTimer, &QTimer::timeout,
+            this, &ControlWindow::tickPreviewPlay);
 
     m_timeLabel = new QLabel(tr("표시 시간: —"));
     m_timeLabel->setObjectName("PreviewTimeLabel");
+
+    // TAKE 는 실제 송출 — 시뮬레이션 리셋.
+    connect(this, &ControlWindow::takeRequested,
+            this, &ControlWindow::resetPreviewSim);
 
     // 우측: 캔버스에 꽉 채우기 (선택 레이어 → geometry = 캔버스 전체).
     //   최대화 창 아이콘(SP_TitleBarMaxButton)이 시각적으로 "꽉 채우기" 의미
@@ -698,17 +712,75 @@ QWidget* ControlWindow::buildPreviewPane() {
 }
 
 void ControlWindow::setPreviewDisplayTime(int seconds) {
-    if (!m_timeLabel) return;
-    if (seconds < 0) {
-        m_timeLabel->setText(tr("표시 시간: —"));
-    } else if (seconds == 0) {
-        m_timeLabel->setText(tr("표시 시간: 수동"));
+    m_previewTotalSec = seconds;
+    // 프로그램 컨텍스트가 바뀌면 시뮬레이션은 항상 초기 상태.
+    resetPreviewSim();
+    if (m_btnPreviewPlay) m_btnPreviewPlay->setEnabled(seconds > 0);
+}
+
+void ControlWindow::togglePreviewPlay() {
+    if (m_previewTotalSec <= 0) return;
+    if (m_previewRunning) {
+        m_previewTimer->stop();
+        m_previewRunning = false;
+        m_btnPreviewPlay->setText(QStringLiteral("▶"));
     } else {
-        const int m = seconds / 60;
-        const int s = seconds % 60;
-        m_timeLabel->setText(tr("표시 시간: %1:%2")
-            .arg(m, 2, 10, QChar('0'))
-            .arg(s, 2, 10, QChar('0')));
+        // 이미 총 시간에 도달했다면 처음부터 재생
+        if (m_previewElapsedMs >= m_previewTotalSec * 1000)
+            m_previewElapsedMs = 0;
+        m_previewTimer->start();
+        m_previewRunning = true;
+        m_btnPreviewPlay->setText(QStringLiteral("⏸"));
+    }
+    updateTimeLabel();
+}
+
+void ControlWindow::tickPreviewPlay() {
+    m_previewElapsedMs += m_previewTimer->interval();
+    const int totalMs = m_previewTotalSec * 1000;
+    if (m_previewElapsedMs >= totalMs) {
+        m_previewElapsedMs = totalMs;
+        m_previewTimer->stop();
+        m_previewRunning = false;
+        m_btnPreviewPlay->setText(QStringLiteral("▶"));
+        updateTimeLabel();
+        // 만료 후 잠시 유지 → 0 으로 되돌림 (편집자가 결과를 인지할 시간)
+        QTimer::singleShot(600, this, [this]{
+            if (!m_previewRunning) { m_previewElapsedMs = 0; updateTimeLabel(); }
+        });
+        return;
+    }
+    updateTimeLabel();
+}
+
+void ControlWindow::resetPreviewSim() {
+    if (m_previewTimer) m_previewTimer->stop();
+    m_previewRunning   = false;
+    m_previewElapsedMs = 0;
+    if (m_btnPreviewPlay) m_btnPreviewPlay->setText(QStringLiteral("▶"));
+    updateTimeLabel();
+}
+
+void ControlWindow::updateTimeLabel() {
+    if (!m_timeLabel) return;
+    if (m_previewTotalSec < 0) {
+        m_timeLabel->setText(tr("표시 시간: —"));
+        return;
+    }
+    if (m_previewTotalSec == 0) {
+        m_timeLabel->setText(tr("표시 시간: 수동"));
+        return;
+    }
+    const auto fmt = [](int sec) {
+        return QString("%1:%2").arg(sec / 60, 2, 10, QChar('0'))
+                                .arg(sec % 60, 2, 10, QChar('0'));
+    };
+    const QString total = fmt(m_previewTotalSec);
+    if (m_previewRunning || m_previewElapsedMs > 0) {
+        const int elapsedSec = m_previewElapsedMs / 1000;
+        m_timeLabel->setText(tr("표시 시간: %1 / %2").arg(fmt(elapsedSec), total));
+    } else {
+        m_timeLabel->setText(tr("표시 시간: %1").arg(total));
     }
 }
 
