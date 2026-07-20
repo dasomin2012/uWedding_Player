@@ -40,6 +40,12 @@ public slots:
     // 빈 QImage 는 무시(직전 프레임 유지).
     void setLiveMirrorImage(const QImage& img);
 
+    // UI-F: Preview 툴바 시간 표시.
+    //  seconds < 0 : 프로그램 없음 → "표시 시간: —"
+    //  seconds = 0 : 자동 진행 없음 → "표시 시간: 수동"
+    //  seconds > 0 : "표시 시간: MM:SS"
+    void setPreviewDisplayTime(int seconds);
+
 public:
     ProgramListWidget* programList()  const { return m_programList; }  // Application 와이어링용
     PreviewCanvas*     previewCanvas() const { return m_canvas; }      // 썸네일 렌더용
@@ -57,6 +63,7 @@ private:
     void createMenus();
     void createCentralLayout();
     QWidget* buildLivePanel();              // Live mirror + TAKE 클러스터
+    QWidget* buildPreviewPane();            // UI-F: 툴바 + PreviewCanvas
     void applyTheme(const QString& theme);   // "light" | "dark" — QSS 적용
     void toggleTheme();                      // 다크 모드 토글 (Tools 메뉴)
 
@@ -75,6 +82,11 @@ private:
     //  applyScene({}) 가 LiveWindow 검정 배경을 그대로 보여준다.
     QPushButton*  m_takeButton      = nullptr;   // TAKE (큰 빨간 버튼)
     QPushButton*  m_btnTransition   = nullptr;   // Fade ↔ Cut 토글 (한 버튼)
+
+    // UI-F: Preview 인라인 툴바
+    //   + 레이어 버튼은 미디어 라이브러리 드래그앤드롭과 기능 중복이라 제거.
+    QPushButton* m_btnPreviewPlay = nullptr;   // ▶ (placeholder)
+    QLabel*      m_timeLabel      = nullptr;   // 표시 시간
 
     // UI-B: 다크 모드
     QAction*     m_darkThemeAct = nullptr;

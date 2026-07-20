@@ -18,6 +18,7 @@
 #include <QMenuBar>
 #include <QPixmap>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSettings>
 #include <QSplitter>
 #include <QStatusBar>
@@ -92,6 +93,28 @@ QPushButton#TransButton {
 }
 QPushButton#TransButton:hover  { background: #4d423a; }
 QPushButton#TransButton:pressed { background: #2a2320; }
+
+QPushButton#PreviewToolBtn {
+    background: #ffffff;
+    border: 1px solid #d3c8b8;
+    border-radius: 6px;
+    padding: 4px 12px;
+    color: #1c1512;
+    font-weight: 600;
+    min-height: 22px;
+}
+QPushButton#PreviewToolBtn:hover  { background: #f5ede0; border-color: #b98a5e; }
+QPushButton#PreviewToolBtn:pressed { background: #ece0cc; }
+QPushButton#PreviewToolBtn:disabled {
+    color: #b0a695; background: #f5f0e8; border-color: #e0d8ca;
+}
+QLabel#PreviewTimeLabel {
+    color: #8a7d70;
+    font-weight: 600;
+    padding: 2px 8px;
+    background: #f5ede0;
+    border-radius: 6px;
+}
 
 QPushButton#FillButton {
     background: #8a5a3b;
@@ -267,6 +290,28 @@ QPushButton#TransButton {
 }
 QPushButton#TransButton:hover  { background: #d6b48e; }
 QPushButton#TransButton:pressed { background: #a88760; }
+
+QPushButton#PreviewToolBtn {
+    background: #26211c;
+    border: 1px solid #3a322c;
+    border-radius: 6px;
+    padding: 4px 12px;
+    color: #e8ddd0;
+    font-weight: 600;
+    min-height: 22px;
+}
+QPushButton#PreviewToolBtn:hover  { background: #33291f; border-color: #c8a37a; }
+QPushButton#PreviewToolBtn:pressed { background: #40342a; }
+QPushButton#PreviewToolBtn:disabled {
+    color: #5c534a; background: #1a1613; border-color: #2c2620;
+}
+QLabel#PreviewTimeLabel {
+    color: #8f857a;
+    font-weight: 600;
+    padding: 2px 8px;
+    background: #26211c;
+    border-radius: 6px;
+}
 
 QPushButton#FillButton {
     background: #c8a37a;
@@ -547,8 +592,8 @@ void ControlWindow::createCentralLayout() {
     // LEFT: 미디어 (자체 헤더가 있으므로 외부 타이틀 없이 프레임만)
     auto* leftPanel = wrapPanel(m_mediaList);
 
-    // CENTER TOP: Preview
-    auto* previewPanel = wrapPanel(m_canvas, tr("작업 캔버스"));
+    // CENTER TOP: Preview (툴바 + 캔버스)
+    auto* previewPanel = wrapPanel(buildPreviewPane(), tr("작업 캔버스"));
 
     // CENTER BOTTOM: Programs (자체 헤더 있음)
     auto* programPanel = wrapPanel(m_programList);
@@ -563,8 +608,15 @@ void ControlWindow::createCentralLayout() {
     // RIGHT TOP: Live mirror + TAKE 클러스터
     auto* livePanel = wrapPanel(buildLivePanel(), tr("Live 송출"));
 
-    // RIGHT BOTTOM: Property (자체 헤더 있음)
-    auto* propPanel = wrapPanel(m_property);
+    // RIGHT BOTTOM: Property (자체 헤더 있음). 세로 공간이 부족할 때 하단
+    // 버튼(레이어 삭제 등)이 잘리지 않도록 QScrollArea 로 감싸 스크롤 확보.
+    auto* propScroll = new QScrollArea;
+    propScroll->setWidget(m_property);
+    propScroll->setWidgetResizable(true);
+    propScroll->setFrameShape(QFrame::NoFrame);
+    propScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    propScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    auto* propPanel = wrapPanel(propScroll);
 
     auto* rightCol = new QSplitter(Qt::Vertical);
     rightCol->addWidget(livePanel);
@@ -591,6 +643,52 @@ void ControlWindow::createCentralLayout() {
     root->setSpacing(6);
     root->addWidget(outer, 1);
     setCentralWidget(central);
+}
+
+// UI-F: 중앙 상단 Preview 패널 조립. 인라인 툴바 + 캔버스.
+//   [▶]   표시 시간: MM:SS         (여백)
+//  + 레이어 버튼은 미디어 라이브러리 드래그앤드롭과 중복이라 배치하지 않음.
+QWidget* ControlWindow::buildPreviewPane() {
+    auto* box = new QWidget;
+    auto* v = new QVBoxLayout(box);
+    v->setContentsMargins(0, 0, 0, 0);
+    v->setSpacing(6);
+
+    auto* toolbar = new QHBoxLayout;
+    toolbar->setContentsMargins(0, 0, 0, 0);
+    toolbar->setSpacing(6);
+
+    m_btnPreviewPlay = new QPushButton(QStringLiteral("▶"));
+    m_btnPreviewPlay->setObjectName("PreviewToolBtn");
+    m_btnPreviewPlay->setEnabled(false);   // placeholder — 후속 트랙
+    m_btnPreviewPlay->setToolTip(tr("미리보기 재생 (구현 예정)"));
+
+    m_timeLabel = new QLabel(tr("표시 시간: —"));
+    m_timeLabel->setObjectName("PreviewTimeLabel");
+
+    toolbar->addWidget(m_btnPreviewPlay);
+    toolbar->addSpacing(8);
+    toolbar->addWidget(m_timeLabel);
+    toolbar->addStretch(1);
+
+    v->addLayout(toolbar);
+    v->addWidget(m_canvas, 1);
+    return box;
+}
+
+void ControlWindow::setPreviewDisplayTime(int seconds) {
+    if (!m_timeLabel) return;
+    if (seconds < 0) {
+        m_timeLabel->setText(tr("표시 시간: —"));
+    } else if (seconds == 0) {
+        m_timeLabel->setText(tr("표시 시간: 수동"));
+    } else {
+        const int m = seconds / 60;
+        const int s = seconds % 60;
+        m_timeLabel->setText(tr("표시 시간: %1:%2")
+            .arg(m, 2, 10, QChar('0'))
+            .arg(s, 2, 10, QChar('0')));
+    }
 }
 
 // UI-C: 우측 상단 Live 패널 조립. mirror 위, TAKE + 전환 토글 아래(한 줄).

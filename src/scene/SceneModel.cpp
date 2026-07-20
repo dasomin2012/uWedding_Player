@@ -30,7 +30,11 @@ void SceneModel::sortByZ() {
 }
 
 void SceneModel::normalizeZ() {
-    sortByZ();
+    // 벡터 순서 = z 순서의 단일 진실 소스. 그저 0..n-1 로 재인덱스한다.
+    //  과거 구현은 여기서 sortByZ() 를 먼저 불렀는데, 그러면 raise/lower/
+    //  toFront/toBack 가 방금 재배치한 벡터를 이전 zIndex 로 되돌려버려
+    //  버튼이 시각적으로 아무 것도 하지 않는 버그가 있었다.
+    //  로드 경로(replaceAll)는 자체적으로 sortByZ() 를 명시 호출한다.
     for (int i = 0; i < m_layers.size(); ++i)
         m_layers[i].zIndex = i;
 }
@@ -51,7 +55,14 @@ QString SceneModel::addLayer(const QString& mediaPath, const QRectF& geometry) {
     return l.id;
 }
 
-void SceneModel::removeLayer(const QString& id) {
+void SceneModel::removeLayer(const QString& idIn) {
+    // 방어적 로컬 복사 필수.
+    //  호출자가 참조 세만틱스로 자신의 QString 필드를 넘기는 경우(예:
+    //  PropertyPanel::m_id) 아래 select("") 발화가 그 필드를 "" 로 재대입하면
+    //  참조 파라미터 idIn 도 함께 "" 로 무효화된다. 이 상태로 emit
+    //  layerRemoved(idIn) 가 나가면 뷰의 onLayerRemoved 가 빈 id 로 no-op —
+    //  레이어가 캔버스에 영구히 남는 버그.
+    const QString id = idIn;
     const int i = indexOf(id);
     if (i < 0) return;
     m_layers.removeAt(i);
@@ -70,6 +81,10 @@ void SceneModel::clear() {
 
 void SceneModel::replaceAll(const QVector<Layer>& layers) {
     m_layers = layers;
+    // 로드된 데이터는 임의의 순서/zIndex 를 가질 수 있으므로 명시적으로
+    // zIndex 로 정렬 후 재인덱스. (normalizeZ 는 sort 안 함 — 아래 z-order
+    // 편집이 벡터 순서를 진실 소스로 다루기 위함.)
+    sortByZ();
     normalizeZ();
     m_selected.clear();
     // 가장 큰 시퀀스 추정 (id 충돌 방지)

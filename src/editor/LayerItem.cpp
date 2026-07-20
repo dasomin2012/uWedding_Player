@@ -126,8 +126,11 @@ QVariant LayerItem::itemChange(GraphicsItemChange change, const QVariant& value)
 
 void LayerItem::mousePressEvent(QGraphicsSceneMouseEvent* e) {
     if (e->button() != Qt::LeftButton) { e->ignore(); return; }
-    if (m_model) m_model->select(m_id);
-    setSelected(true);
+    // Selection 소스는 모델 하나. onSelectionChanged 가 씬을 원자적으로
+    // 정리 + 이 아이템 하나만 setSelected(true) 로 만든다. 여기서 직접
+    // setSelected 를 호출하지 않는다(과거: 이중 경로가 stale 시각 선택 유발).
+    if (m_model && m_model->selectedId() != m_id) m_model->select(m_id);
+    if (!isSelected()) setSelected(true);   // 방어: 모델 select 가 same-id no-op 였을 때
 
     m_drag           = hitTest(e->pos());
     m_dragStartScene = e->scenePos();

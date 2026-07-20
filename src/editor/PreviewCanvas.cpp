@@ -193,8 +193,13 @@ void PreviewCanvas::onZOrderChanged() {
 void PreviewCanvas::onSelectionChanged(const QString& id) {
     if (m_syncingSel) return;
     m_syncingSel = true;
-    for (auto it = m_items.begin(); it != m_items.end(); ++it)
-        it.value()->setSelected(it.key() == id);
+    // 원자적 초기화 후 대상 하나만 선택 — 씬의 내부 selection 리스트가
+    // loop 갱신 시 stale 항목을 남기는 문제를 방지 (multi-select bug).
+    m_scene->clearSelection();
+    if (!id.isEmpty()) {
+        if (auto* it = m_items.value(id, nullptr))
+            it->setSelected(true);
+    }
     m_syncingSel = false;
 }
 

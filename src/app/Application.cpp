@@ -580,6 +580,7 @@ void Application::onProgramAddRequested() {
 
     m_editProgramId = p.id;                    // 이후 편집은 이 program 에 저장
     if (auto* pl = m_controlWindow->programList()) pl->selectProgram(p.id);
+    m_controlWindow->setPreviewDisplayTime(p.displayTimeSec);   // UI-F
     m_controlWindow->setStatusText(
         tr("Added (editing): %1 — 미디어를 배치하면 자동 저장됩니다").arg(p.name));
 }
@@ -592,6 +593,7 @@ void Application::onProgramSelected(const QString& id) {
     m_scene->replaceAll(p->layers);            // Preview/Edit 로드 — Live 무영향(D2)
     m_suppressEditSave = false;
     m_editProgramId = id;                      // 편집 대상 전환 → 이후 편집 자동저장
+    m_controlWindow->setPreviewDisplayTime(p->displayTimeSec);   // UI-F
     m_controlWindow->setStatusText(tr("Loaded: %1").arg(p->name));
 }
 
@@ -618,6 +620,7 @@ void Application::playProgram(const QString& id) {
         pl->setActiveProgram(id);       // 재생중 강조
         pl->selectProgram(id);
     }
+    m_controlWindow->setPreviewDisplayTime(p->displayTimeSec);   // UI-F
 
     // 자동 진행: displayTimeSec>0 이면 타이머 시작(§R5: Play 에서만 시작).
     if (m_programAdvanceTimer) {
@@ -668,6 +671,7 @@ void Application::stopProgramPlayback() {
     m_currentProgramId.clear();
     if (auto* pl = m_controlWindow->programList())
         pl->setActiveProgram(QString());
+    m_controlWindow->setPreviewDisplayTime(-1);            // UI-F
     m_controlWindow->setStatusText(tr("Program stopped"));
 }
 
@@ -733,6 +737,7 @@ void Application::onProgramDeleteRequested(const QString& id) {
     if (m_editProgramId == id) {               // 편집 대상이 삭제됨 → 자동저장 중단
         if (m_editSaveTimer) m_editSaveTimer->stop();
         m_editProgramId.clear();
+        m_controlWindow->setPreviewDisplayTime(-1);   // UI-F
     }
     if (m_currentProgramId == id) {
         m_currentProgramId.clear();
