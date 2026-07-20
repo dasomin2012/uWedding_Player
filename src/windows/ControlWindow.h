@@ -110,6 +110,22 @@ private:
     QPushButton*  m_btnTransition   = nullptr;   // Fade ↔ Cut 토글 (한 버튼)
     QPushButton*  m_btnBlack        = nullptr;   // 응급 F2B 토글 (BLACK)
 
+    // UX-1: 상태표시줄 위젯 (색 도트 + 엔진/모니터 라벨 + 시계).
+    QLabel*  m_statusObsDot      = nullptr;
+    QLabel*  m_statusObsText     = nullptr;
+    QLabel*  m_statusMonitorDot  = nullptr;
+    QLabel*  m_statusMonitorText = nullptr;
+    QLabel*  m_statusClock       = nullptr;
+    QTimer*  m_clockTimer        = nullptr;
+
+    // UX-1: 툴바 우측 모드 토글 (UX-4 에서 활성화 예정 — 지금은 자리만).
+    QPushButton* m_btnModePrep   = nullptr;
+    QPushButton* m_btnModeShow   = nullptr;
+
+    // UX-1: 상태표시줄 초기화 및 시계 tick.
+    void setupStatusBar();
+    void updateClock();
+
     // UI-F: Preview 인라인 툴바
     //   + 레이어 버튼은 미디어 라이브러리 드래그앤드롭과 기능 중복이라 제거.
     QPushButton* m_btnPreviewPlay = nullptr;   // ▶ / ⏸ 카운트다운 토글

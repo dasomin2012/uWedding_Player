@@ -19,7 +19,10 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QPixmap>
+#include <QSizePolicy>
+#include <QTime>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
@@ -542,60 +545,103 @@ ControlWindow::ControlWindow(Settings* settings, SceneModel* scene,
 
     createMenus();
     createCentralLayout();
+    setupStatusBar();                            // UX-1: 도트/엔진/모니터/시계
 
     // UI-B: 저장된 테마 로드 후 적용.
     QSettings qs("Hanmac", "uWeddingPlayer");
     const QString saved = qs.value("ui/theme", "light").toString();
     applyTheme(saved);
-
-    statusBar()->showMessage("Ready");
 }
 
 ControlWindow::~ControlWindow() = default;
 
 void ControlWindow::createMenus() {
-    auto* fileMenu    = menuBar()->addMenu(tr("&File"));
-    auto* settingsAct = fileMenu->addAction(tr("&Settings..."));
+    // UX-1: 메뉴/툴바 한글화 + 슬림화. 어르신 운용자를 위한 큰 라벨/명확한 어법.
+    auto* fileMenu    = menuBar()->addMenu(tr("파일(&F)"));
+    auto* settingsAct = fileMenu->addAction(tr("환경 설정(&S)..."));
     connect(settingsAct, &QAction::triggered,
             this, &ControlWindow::openSettingsRequested);
     fileMenu->addSeparator();
-    auto* quitAct = fileMenu->addAction(tr("E&xit"));
+    auto* quitAct = fileMenu->addAction(tr("종료(&X)"));
     quitAct->setShortcut(QKeySequence::Quit);
     connect(quitAct, &QAction::triggered, qApp, &QApplication::quit);
 
-    auto* sceneMenu = menuBar()->addMenu(tr("&Scene"));
-    auto* saveAct   = sceneMenu->addAction(tr("&Save Scene"));
+    auto* sceneMenu = menuBar()->addMenu(tr("장면(&S)"));
+    auto* saveAct   = sceneMenu->addAction(tr("장면 저장(&S)"));
     saveAct->setShortcut(QKeySequence::Save);
     connect(saveAct, &QAction::triggered, this, &ControlWindow::saveSceneRequested);
-    auto* loadAct = sceneMenu->addAction(tr("&Load Scene"));
+    auto* loadAct = sceneMenu->addAction(tr("장면 불러오기(&L)"));
     connect(loadAct, &QAction::triggered, this, &ControlWindow::loadSceneRequested);
     sceneMenu->addSeparator();
-    auto* clearAct = sceneMenu->addAction(tr("&Clear Scene"));
-    connect(clearAct, &QAction::triggered, this, [this]{ m_scene->clear(); });
+    auto* clearAct = sceneMenu->addAction(tr("장면 비우기(&C)"));
+    // 어르신 실수 방지: Y/N 대신 예/취소 + 기본 포커스 취소.
+    connect(clearAct, &QAction::triggered, this, [this]{
+        const int ret = QMessageBox::question(this,
+            tr("장면 비우기"),
+            tr("정말 모든 레이어를 지우시겠어요?\n이 동작은 되돌릴 수 없습니다."),
+            QMessageBox::Yes | QMessageBox::Cancel,
+            QMessageBox::Cancel);
+        if (ret == QMessageBox::Yes) m_scene->clear();
+    });
 
-    auto* toolsMenu  = menuBar()->addMenu(tr("&Tools"));
-    auto* monitorAct = toolsMenu->addAction(tr("Select Output &Monitor..."));
+    auto* toolsMenu  = menuBar()->addMenu(tr("도구(&T)"));
+    auto* monitorAct = toolsMenu->addAction(tr("출력 모니터 선택(&M)..."));
     connect(monitorAct, &QAction::triggered,
             this, &ControlWindow::selectOutputMonitorRequested);
-    auto* playTestAct = toolsMenu->addAction(tr("Play &Test Video..."));
+    auto* playTestAct = toolsMenu->addAction(tr("테스트 영상 재생(&T)..."));
     connect(playTestAct, &QAction::triggered,
             this, &ControlWindow::playTestVideoRequested);
     toolsMenu->addSeparator();
 
     // UI-B: 다크 모드 토글
-    m_darkThemeAct = toolsMenu->addAction(tr("&다크 모드"));
+    m_darkThemeAct = toolsMenu->addAction(tr("다크 모드(&D)"));
     m_darkThemeAct->setCheckable(true);
     m_darkThemeAct->setShortcut(QKeySequence("Ctrl+Shift+D"));
     connect(m_darkThemeAct, &QAction::triggered, this, &ControlWindow::toggleTheme);
 
-    auto* toolbar = addToolBar(tr("Main"));
+    // UX-1: 도움말 메뉴 — 지금은 정보 다이얼로그만. 실제 도움말은 UX-5.
+    auto* helpMenu = menuBar()->addMenu(tr("도움말(&H)"));
+    auto* aboutAct = helpMenu->addAction(tr("정보(&I)..."));
+    connect(aboutAct, &QAction::triggered, this, [this]{
+        QMessageBox::about(this, tr("uWeddingPlayer 정보"),
+            tr("<h3>uWeddingPlayer</h3>"
+               "<p>웨딩홀 미디어 플레이어</p>"
+               "<p>버전: 개발 빌드</p>"
+               "<p>© Hanmac IT</p>"));
+    });
+
+    // ---- 툴바: 자주 쓰는 3개만 (장면 비우기·테스트 영상 재생은 메뉴에만). ----
+    auto* toolbar = addToolBar(tr("도구 모음"));
+    toolbar->setObjectName("MainToolBar");
     toolbar->setMovable(false);
+    toolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);
     toolbar->addAction(saveAct);
     toolbar->addAction(loadAct);
-    toolbar->addAction(clearAct);
     toolbar->addSeparator();
     toolbar->addAction(monitorAct);
-    toolbar->addAction(playTestAct);
+
+    // 우측 stretch — [준비|진행] 세그먼트를 툴바 오른쪽 끝으로 밀어냄.
+    auto* spacer = new QWidget(toolbar);
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    toolbar->addWidget(spacer);
+
+    // 모드 토글 (스텁 — UX-4 에서 활성화). 지금은 준비만 checked, 진행은 disabled.
+    auto* modeContainer = new QWidget(toolbar);
+    auto* modeRow = new QHBoxLayout(modeContainer);
+    modeRow->setContentsMargins(0, 0, 8, 0);
+    modeRow->setSpacing(0);
+    m_btnModePrep = new QPushButton(tr("준비"), modeContainer);
+    m_btnModePrep->setObjectName("ModePrepButton");
+    m_btnModePrep->setCheckable(true);
+    m_btnModePrep->setChecked(true);
+    m_btnModeShow = new QPushButton(tr("진행"), modeContainer);
+    m_btnModeShow->setObjectName("ModeShowButton");
+    m_btnModeShow->setCheckable(true);
+    m_btnModeShow->setEnabled(false);
+    m_btnModeShow->setToolTip(tr("진행 모드는 곧 추가됩니다 (UX-4)"));
+    modeRow->addWidget(m_btnModePrep);
+    modeRow->addWidget(m_btnModeShow);
+    toolbar->addWidget(modeContainer);
 }
 
 // ================================================================
@@ -985,7 +1031,62 @@ void ControlWindow::toggleTheme() {
 }
 
 void ControlWindow::setStatusText(const QString& text) {
-    statusBar()->showMessage(text);
+    // UX-1: 이제 임시(5초) 메시지 — 상시 상태는 우측 영구 위젯이 담당.
+    statusBar()->showMessage(text, 5000);
+}
+
+// ---------------------------------------------------------------------------
+// UX-1: 상태표시줄 초기화.
+//   좌측(addWidget)      → 🟢 엔진 도트 + "OBS 송출" 또는 "Qt 송출"
+//                        → 🟢 모니터 도트 + "송출 모니터 N번"
+//   우측(addPermanentWidget) → HH:MM:SS 시계 (QTimer 1Hz).
+//   setStatusText() 로 들어오는 임시 메시지는 좌측 stretch 영역에 5초간 표시됨.
+// ---------------------------------------------------------------------------
+void ControlWindow::setupStatusBar() {
+    auto mkDot = [](const QString& color) {
+        auto* dot = new QLabel;
+        dot->setFixedSize(10, 10);
+        dot->setStyleSheet(QString(
+            "background:%1; border-radius:5px;").arg(color));
+        return dot;
+    };
+
+    // 엔진 배지 — settings.engine 이 "obs" 면 OBS, 아니면 Qt.
+    const QString engine = m_settings ? m_settings->engine() : QStringLiteral("qt");
+    const bool obsMode   = (engine == QStringLiteral("obs"));
+    m_statusObsDot  = mkDot(obsMode ? "#2ea043" : "#888");
+    m_statusObsText = new QLabel(obsMode ? tr("OBS 송출") : tr("Qt 송출"));
+    m_statusObsText->setStyleSheet("color:#444;");
+
+    // 출력 모니터 인덱스 — 백엔드에 따라 다른 필드에서 조회.
+    const int monIdx = m_settings
+        ? (obsMode ? m_settings->obs().projectorMonitor
+                   : m_settings->outputMonitorIndex())
+        : 1;
+    m_statusMonitorDot  = mkDot("#2ea043");
+    m_statusMonitorText = new QLabel(tr("송출 모니터 %1번").arg(monIdx));
+    m_statusMonitorText->setStyleSheet("color:#444;");
+
+    m_statusClock = new QLabel;
+    m_statusClock->setStyleSheet("color:#444; font-weight:500;");
+    updateClock();
+    m_clockTimer = new QTimer(this);
+    connect(m_clockTimer, &QTimer::timeout, this, &ControlWindow::updateClock);
+    m_clockTimer->start(1000);
+
+    QStatusBar* sb = statusBar();
+    sb->setStyleSheet("QStatusBar { font-size: 12px; }");
+    sb->addWidget(m_statusObsDot);
+    sb->addWidget(m_statusObsText);
+    sb->addWidget(new QLabel(QStringLiteral("　")));   // 배지 간 공백
+    sb->addWidget(m_statusMonitorDot);
+    sb->addWidget(m_statusMonitorText);
+    sb->addPermanentWidget(m_statusClock);
+}
+
+void ControlWindow::updateClock() {
+    if (m_statusClock)
+        m_statusClock->setText(QTime::currentTime().toString(QStringLiteral("HH:mm:ss")));
 }
 
 // Programs 리스트 접기/펼치기 및 접힌 헤더 이름 갱신 편의 슬롯 (Application 용).
