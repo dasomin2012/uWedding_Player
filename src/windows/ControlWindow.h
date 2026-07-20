@@ -47,6 +47,9 @@ public slots:
     //  seconds > 0 : "표시 시간: MM:SS"
     void setPreviewDisplayTime(int seconds);
 
+    // 외부(예: 리허설 창 close event)에서 미리보기 상태를 강제 리셋.
+    void resetPreviewSim();
+
 public:
     ProgramListWidget* programList()  const { return m_programList; }  // Application 와이어링용
     PreviewCanvas*     previewCanvas() const { return m_canvas; }      // 썸네일 렌더용
@@ -59,6 +62,8 @@ signals:
     void loadSceneRequested();
     void takeRequested();
     void takeModeChanged(const QString& mode);   // "cut" | "fade"
+    // 미리보기 재생 상태 변화 — Application 이 리허설 창을 열고/닫는 트리거.
+    void previewPlayingChanged(bool playing);
 
 private:
     void createMenus();
@@ -102,7 +107,7 @@ private:
 
     void togglePreviewPlay();          // ▶/⏸ 클릭
     void tickPreviewPlay();            // 100ms 타이머
-    void resetPreviewSim();            // 정지 + 경과 0
+    // resetPreviewSim 은 public slots 로 이동 (외부에서도 강제 리셋 가능)
     void updateTimeLabel();            // 상태 기반 라벨 재작성
 
     // UI-B: 다크 모드

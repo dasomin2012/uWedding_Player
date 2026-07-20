@@ -36,6 +36,10 @@ public:
 
     Settings& settings() { return m_settings; }
 
+protected:
+    // 리허설 창의 close event(X 클릭) 를 감지해 ControlWindow 상태와 동기화.
+    bool eventFilter(QObject* obj, QEvent* event) override;
+
 private slots:
     void onSelectOutputMonitorRequested();
     void onOpenSettingsRequested();
@@ -50,6 +54,9 @@ private slots:
     void onProgramRenameRequested(const QString& id, const QString& newName);
     void onProgramDeleteRequested(const QString& id);
     void onProgramDisplayTimeEditRequested(const QString& id);
+
+    // ▶ 미리보기 재생 상태 변화 → 리허설 창 열기/닫기.
+    void onPreviewPlayingChanged(bool playing);
 
 private:
     QString resolveSettingsPath() const;
@@ -79,6 +86,9 @@ private:
     std::unique_ptr<ProgramRepository> m_programs;     // Phase 5
     std::unique_ptr<ControlWindow>  m_controlWindow;
     std::unique_ptr<LiveWindow>     m_liveWindow;
+    // 두 번째 LiveWindow 인스턴스 — Preview 리허설(Control 모니터에 작은 창).
+    // ILiveSink 인 것은 무관; TakeController 는 이 창을 알지 못함.
+    std::unique_ptr<LiveWindow>     m_rehearsalWindow;
 #if defined(UWP_HAS_OBS)
     // 선언 순서 주의: backend 를 proc 보다 먼저 선언 → proc 가 먼저 소멸
     // (proc 소멸 시 OBS 종료·ObsClient abort, 이때 backend 는 아직 생존).

@@ -724,6 +724,7 @@ void ControlWindow::togglePreviewPlay() {
         m_previewTimer->stop();
         m_previewRunning = false;
         m_btnPreviewPlay->setText(QStringLiteral("▶"));
+        emit previewPlayingChanged(false);
     } else {
         // 이미 총 시간에 도달했다면 처음부터 재생
         if (m_previewElapsedMs >= m_previewTotalSec * 1000)
@@ -731,6 +732,7 @@ void ControlWindow::togglePreviewPlay() {
         m_previewTimer->start();
         m_previewRunning = true;
         m_btnPreviewPlay->setText(QStringLiteral("⏸"));
+        emit previewPlayingChanged(true);
     }
     updateTimeLabel();
 }
@@ -744,6 +746,7 @@ void ControlWindow::tickPreviewPlay() {
         m_previewRunning = false;
         m_btnPreviewPlay->setText(QStringLiteral("▶"));
         updateTimeLabel();
+        emit previewPlayingChanged(false);   // 리허설 창도 닫힘
         // 만료 후 잠시 유지 → 0 으로 되돌림 (편집자가 결과를 인지할 시간)
         QTimer::singleShot(600, this, [this]{
             if (!m_previewRunning) { m_previewElapsedMs = 0; updateTimeLabel(); }
@@ -754,11 +757,13 @@ void ControlWindow::tickPreviewPlay() {
 }
 
 void ControlWindow::resetPreviewSim() {
+    const bool wasRunning = m_previewRunning;
     if (m_previewTimer) m_previewTimer->stop();
     m_previewRunning   = false;
     m_previewElapsedMs = 0;
     if (m_btnPreviewPlay) m_btnPreviewPlay->setText(QStringLiteral("▶"));
     updateTimeLabel();
+    if (wasRunning) emit previewPlayingChanged(false);
 }
 
 void ControlWindow::updateTimeLabel() {

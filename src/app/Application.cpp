@@ -23,6 +23,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QEvent>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QFileDialog>
@@ -123,6 +124,25 @@ bool Application::initialize() {
         &m_settings, m_scene.get(), m_snapshotCache.get());
     m_liveWindow    = std::make_unique<LiveWindow>(m_playerPool.get());
     m_liveWindow->setCanvasSize(m_settings.canvasWidth(), m_settings.canvasHeight());
+
+    // 리허설(미리보기 재생) 창 — Control 모니터에 뜨는 non-fullscreen LiveWindow.
+    // 캔버스 비율 유지하며 폭 800px 상한, 높이 600px 상한.
+    m_rehearsalWindow = std::make_unique<LiveWindow>(m_playerPool.get());
+    m_rehearsalWindow->setWindowTitle(tr("미리보기 재생"));
+    m_rehearsalWindow->setCanvasSize(m_settings.canvasWidth(),
+                                     m_settings.canvasHeight());
+    {
+        const int cw = m_settings.canvasWidth();
+        const int ch = m_settings.canvasHeight();
+        double asp = (ch > 0) ? double(cw) / double(ch) : 16.0/9.0;
+        int w = 800;
+        int h = qRound(w / asp);
+        if (h > 600) { h = 600; w = qRound(h * asp); }
+        m_rehearsalWindow->resize(w, h);
+    }
+    m_rehearsalWindow->installEventFilter(this);
+    connect(m_controlWindow.get(), &ControlWindow::previewPlayingChanged,
+            this, &Application::onPreviewPlayingChanged);
 
     connect(m_controlWindow.get(), &ControlWindow::selectOutputMonitorRequested,
             this, &Application::onSelectOutputMonitorRequested);
@@ -775,6 +795,33 @@ void Application::onProgramDeleteRequested(const QString& id) {
     m_programs->remove(id);                    // → programRemoved → 갱신
     m_programs->save(resolveProgramsPath());
     m_controlWindow->setStatusText(tr("Deleted: %1").arg(name));
+}
+
+// ▶ 클릭(true) / ⏸·자동완료·리셋(false) 에 반응해 리허설 창 제어.
+//   playing=true  : 현재 SceneModel 스냅샷을 리허설 창에 apply + 창 표시
+//   playing=false : 창 숨김 + 씬 비움(플레이어 반환)
+void Application::onPreviewPlayingChanged(bool playing) {
+    if (!m_rehearsalWindow) return;
+    if (playing) {
+        // 편집 중 상태를 그대로 스냅샷 — Take 와 달리 Live 는 무영향.
+        m_rehearsalWindow->applyScene(m_scene->layers());
+        m_rehearsalWindow->show();
+        m_rehearsalWindow->raise();
+        m_rehearsalWindow->activateWindow();
+    } else {
+        m_rehearsalWindow->applyScene({});      // 플레이어 반환
+        m_rehearsalWindow->hide();
+    }
+}
+
+// 리허설 창의 X(close) → ControlWindow 의 ▶ 상태를 강제 리셋.
+//  resetPreviewSim 내부 emit previewPlayingChanged(false) 가 다시
+//  onPreviewPlayingChanged(false) 를 호출하지만 hide()·applyScene({}) 는 idempotent.
+bool Application::eventFilter(QObject* obj, QEvent* event) {
+    if (obj == m_rehearsalWindow.get() && event->type() == QEvent::Close) {
+        if (m_controlWindow) m_controlWindow->resetPreviewSim();
+    }
+    return QObject::eventFilter(obj, event);
 }
 
 } // namespace uwp
