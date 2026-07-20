@@ -1001,13 +1001,10 @@ void Application::onProgramDisplayTimeEditRequested(const QString& id) {
 void Application::onProgramDeleteRequested(const QString& id) {
     const Program* p = m_programs->find(id);
     if (!p) return;
-    const QString name  = p->name;            // remove 전에 캡처(포인터 무효화 방지)
+    // 삭제 확인 다이얼로그는 ProgramListWidget 쪽 한 곳에서만 처리(한글).
+    // 여기서는 remove 전 이름/썸네일 캡처(포인터 무효화 방지)만 하고 바로 진행.
+    const QString name  = p->name;
     const QString thumb = p->thumbnailRelPath;
-
-    const auto reply = QMessageBox::question(
-        m_controlWindow.get(), tr("Delete Program"),
-        tr("Delete program \"%1\"?").arg(name));
-    if (reply != QMessageBox::Yes) return;
 
     if (!thumb.isEmpty()) QFile::remove(dataDir() + "/" + thumb);
     // 프로그램에 딸린 페이지별 썸네일 정리 (best-effort — 실패해도 무시).
@@ -1031,7 +1028,7 @@ void Application::onProgramDeleteRequested(const QString& id) {
     }
     m_programs->remove(id);                    // → programRemoved → 갱신
     m_programs->save(resolveProgramsPath());
-    m_controlWindow->setStatusText(tr("Deleted: %1").arg(name));
+    m_controlWindow->setStatusText(tr("삭제됨: %1").arg(name));
 }
 
 // ▶ 클릭(true) / ⏸·리셋(false) 에 반응해 리허설 창 제어.
