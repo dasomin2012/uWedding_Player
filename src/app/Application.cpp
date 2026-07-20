@@ -181,6 +181,15 @@ bool Application::initialize() {
                     const QString thumb = p->thumbnailRelPath.isEmpty()
                         ? QString() : dataDir() + "/" + p->thumbnailRelPath;
                     pl->updateItem(id, *p, thumb);
+                    if (id == m_editProgramId) {
+                        // 편집 중 프로그램의 이름 변경 → Program 헤더(접힌 상태)와
+                        // Page 탭 컨텍스트 라벨 둘 다 최신화.
+                        pl->setCurrentProgramName(p->name);
+                        if (auto* pgl = m_controlWindow->pageList()) {
+                            pgl->setProgram(p, dataDir());
+                            pgl->setActivePage(m_editPageId);
+                        }
+                    }
                 });
 
         // Phase 5b — 리스트 동작 와이어링
@@ -640,9 +649,14 @@ void Application::onProgramAddRequested() {
 
     m_editProgramId = p.id;                    // 이후 편집은 이 program 에 저장
     m_editPageId    = p.pages.first().id;
-    if (auto* pl = m_controlWindow->programList()) pl->selectProgram(p.id);
+    if (auto* pl = m_controlWindow->programList()) {
+        pl->selectProgram(p.id);
+        pl->setCurrentProgramName(p.name);     // 접힌 상태 헤더 라벨(수동 접기 시 사용)
+        // 자동 접기 하지 않음 — 사용자가 다른 프로그램의 페이지도 비교하며
+        // 볼 수 있도록 프로그램 리스트를 그대로 노출.
+    }
     if (auto* pgl = m_controlWindow->pageList()) {
-        pgl->setProgram(&p, dataDir());        // 페이지 탭 갱신
+        pgl->setProgram(&p, dataDir());
         pgl->setActivePage(m_editPageId);
     }
     m_controlWindow->setPreviewDisplayTime(p.pages.first().displayTimeSec);
@@ -661,6 +675,11 @@ void Application::onProgramSelected(const QString& id) {
     m_suppressEditSave = false;
     m_editProgramId = id;
     m_editPageId    = p->pages.first().id;
+    if (auto* pl = m_controlWindow->programList()) {
+        pl->setCurrentProgramName(p->name);
+        // 자동 접기 안 함 — 사용자가 다른 프로그램들의 페이지도 살펴보며
+        // 편집 대상을 스위치할 수 있도록 유지. 접기/펼치기는 ∧/∨ 버튼으로 수동.
+    }
     if (auto* pgl = m_controlWindow->pageList()) {
         pgl->setProgram(p, dataDir());
         pgl->setActivePage(m_editPageId);
@@ -835,13 +854,9 @@ void Application::persistEditProgram() {
         if (pIdx == 0) up.thumbnailRelPath = pageRel;
     }
 
-    m_programs->update(up);                    // → programUpdated → updateItem
+    m_programs->update(up);                    // → programUpdated → 리스트 갱신
     m_programs->save(resolveProgramsPath());
-    // 페이지 리스트에 갱신된 썸네일 반영.
-    if (auto* pgl = m_controlWindow->pageList()) {
-        const Program* np = m_programs->find(m_editProgramId);
-        if (np) { pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId); }
-    }
+    // pageList 재구성은 programUpdated 시그널 핸들러가 처리 (중복 갱신 회피).
 }
 
 void Application::flushEditSave() {

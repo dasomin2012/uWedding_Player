@@ -51,6 +51,10 @@ public slots:
     // 외부(예: 리허설 창 close event)에서 미리보기 상태를 강제 리셋.
     void resetPreviewSim();
 
+    // 하단 [프로그램][페이지] 탭에서 페이지 탭을 활성화 (프로그램 로드 후 호출).
+    void showPagesTab();
+    void showProgramsTab();
+
     // 리허설 체인 (Loop/Next/First) 연속 재생 시 카운트다운만 재시작.
     //   newTotalSec: 다음 프로그램의 displayTimeSec (0 = 새 프로그램이 수동
     //   진행 — 카운트다운 정지, 창은 유지). 창 열림/닫힘 상태는 건드리지 않음.
@@ -88,10 +92,10 @@ private:
     SnapshotCache*   m_snapshots  = nullptr;
 
     MediaListWidget* m_mediaList  = nullptr;
-    PageListWidget*  m_pageList   = nullptr;   // UI-D Phase B: 좌측 [페이지] 탭
+    PageListWidget*  m_pageList   = nullptr;   // 하단 [페이지] 탭 (Phase B → 3안 재배치)
     PreviewCanvas*   m_canvas     = nullptr;
     PropertyPanel*   m_property   = nullptr;
-    QLabel*            m_liveMirror = nullptr;
+    QLabel*            m_liveMirror  = nullptr;
     ProgramListWidget* m_programList = nullptr;
 
     // UI-C: TAKE 클러스터 (Live mirror 아래)

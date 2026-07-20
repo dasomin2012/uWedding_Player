@@ -224,12 +224,12 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 
 QLabel#LiveMirror { background: #0e0d0c; color: #6a5f55; border-radius: 6px; }
 
-QTabWidget#LeftTabs::pane {
+QTabWidget#BottomTabs::pane {
     background: transparent;
     border: 0;
     padding-top: 4px;
 }
-QTabWidget#LeftTabs QTabBar::tab {
+QTabWidget#BottomTabs QTabBar::tab {
     background: transparent;
     color: #8a7d70;
     padding: 6px 14px;
@@ -237,11 +237,21 @@ QTabWidget#LeftTabs QTabBar::tab {
     border-bottom: 2px solid transparent;
     font-weight: 600;
 }
-QTabWidget#LeftTabs QTabBar::tab:hover { color: #1c1512; }
-QTabWidget#LeftTabs QTabBar::tab:selected {
+QTabWidget#BottomTabs QTabBar::tab:hover { color: #1c1512; }
+QTabWidget#BottomTabs QTabBar::tab:selected {
     color: #1c1512;
     border-bottom: 2px solid #8a5a3b;
 }
+
+QPushButton#ProgramCollapseBtn {
+    background: transparent;
+    border: 1px solid #d3c8b8;
+    border-radius: 4px;
+    color: #1c1512;
+    font-weight: 700;
+    padding: 0;
+}
+QPushButton#ProgramCollapseBtn:hover { background: #f5ede0; }
 )";
 
 const char* kQssDark = R"(
@@ -428,12 +438,12 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 
 QLabel#LiveMirror { background: #050403; color: #4a4038; border-radius: 6px; }
 
-QTabWidget#LeftTabs::pane {
+QTabWidget#BottomTabs::pane {
     background: transparent;
     border: 0;
     padding-top: 4px;
 }
-QTabWidget#LeftTabs QTabBar::tab {
+QTabWidget#BottomTabs QTabBar::tab {
     background: transparent;
     color: #8f857a;
     padding: 6px 14px;
@@ -441,11 +451,21 @@ QTabWidget#LeftTabs QTabBar::tab {
     border-bottom: 2px solid transparent;
     font-weight: 600;
 }
-QTabWidget#LeftTabs QTabBar::tab:hover { color: #e8ddd0; }
-QTabWidget#LeftTabs QTabBar::tab:selected {
+QTabWidget#BottomTabs QTabBar::tab:hover { color: #e8ddd0; }
+QTabWidget#BottomTabs QTabBar::tab:selected {
     color: #e8ddd0;
     border-bottom: 2px solid #c8a37a;
 }
+
+QPushButton#ProgramCollapseBtn {
+    background: transparent;
+    border: 1px solid #3a322c;
+    border-radius: 4px;
+    color: #e8ddd0;
+    font-weight: 700;
+    padding: 0;
+}
+QPushButton#ProgramCollapseBtn:hover { background: #33291f; }
 )";
 
 // ---- 패널 래퍼 헬퍼: 내부 위젯을 둥근 프레임 + 선택적 상단 헤더에 담아 반환 ----
@@ -578,7 +598,8 @@ void ControlWindow::createCentralLayout() {
 
     // ----- Programs (UI-C 카드형) -----
     m_programList = new ProgramListWidget;
-    m_programList->setMinimumHeight(200);   // 카드 세로(172) + 여유
+    // 최소 높이는 ProgramListWidget 이 접힘/펼침 상태에 따라 자체 관리.
+    // (외부에서 200 을 걸면 접혀도 그 공간 유지되어 빈 영역 발생)
 
     // ----- Property Panel -----
     m_property = new PropertyPanel(m_scene);
@@ -612,26 +633,44 @@ void ControlWindow::createCentralLayout() {
 
     // ----- 컬럼 조립 -----
 
-    // LEFT: [미디어][페이지] QTabWidget — 편집자가 상황에 따라 스위칭.
-    //   미디어 = 파일 소스 관리, 페이지 = 현재 프로그램의 페이지 목록.
-    auto* leftTabs = new QTabWidget;
-    leftTabs->setObjectName("LeftTabs");
-    leftTabs->addTab(m_mediaList, tr("미디어"));
-    leftTabs->addTab(m_pageList,  tr("페이지"));
-    auto* leftPanel = wrapPanel(leftTabs);
+    // LEFT: 미디어 라이브러리 전용 컬럼 (편집 중 상시 드래그 소스).
+    //   페이지는 하단 탭으로 이동해 미디어와 동시 노출 가능.
+    auto* leftPanel = wrapPanel(m_mediaList);
 
     // CENTER TOP: Preview (툴바 + 캔버스)
     auto* previewPanel = wrapPanel(buildPreviewPane(), tr("작업 캔버스"));
 
-    // CENTER BOTTOM: Programs (자체 헤더 있음)
-    auto* programPanel = wrapPanel(m_programList);
+    // CENTER BOTTOM: 프로그램 리스트(접기 가능) 위에 페이지 리스트 세로 스택.
+    //   프로그램 선택 후 자동으로 접혀 페이지 편집에 세로 공간 최대 확보.
+    //   접힌 상태 헤더에 "프로그램: 이름" 표시 → 컨텍스트 상실 방지.
+    auto* bottomStack = new QWidget;
+    auto* bstL = new QVBoxLayout(bottomStack);
+    bstL->setContentsMargins(0, 0, 0, 0);
+    bstL->setSpacing(6);
+    bstL->addWidget(m_programList);
+    bstL->addWidget(m_pageList, 1);
+    auto* programPanel = wrapPanel(bottomStack);
 
     auto* centerCol = new QSplitter(Qt::Vertical);
     centerCol->addWidget(previewPanel);
     centerCol->addWidget(programPanel);
     centerCol->setStretchFactor(0, 3);
     centerCol->setStretchFactor(1, 1);
-    centerCol->setSizes({ 560, 240 });
+    centerCol->setSizes({ 560, 340 });   // 초기: 접힘 상태 기준(하단 340)
+
+    // 프로그램 리스트 접힘/펼침에 따라 하단 영역 크기 자동 조정 —
+    // 펼침 시 카드 표시로 세로가 늘어나므로 Preview 를 살짝 줄여 페이지가
+    // 잘리지 않게. 접히면 원위치로.
+    connect(m_programList, &ProgramListWidget::collapseChanged,
+            this, [centerCol](bool collapsed) {
+                const auto sizes = centerCol->sizes();
+                const int total = sizes.value(0) + sizes.value(1);
+                //   접힘: 하단 340 (프로그램 96 + 페이지 ~200 + 여백)
+                //   펼침: 하단 480 (프로그램 234 + 페이지 ~200 + 여백)
+                const int bottomTarget = collapsed ? 340 : 480;
+                const int topTarget    = qMax(200, total - bottomTarget);
+                centerCol->setSizes({ topTarget, bottomTarget });
+            });
 
     // RIGHT TOP: Live mirror + TAKE 클러스터
     auto* livePanel = wrapPanel(buildLivePanel(), tr("Live 송출"));
@@ -892,6 +931,16 @@ void ControlWindow::toggleTheme() {
 
 void ControlWindow::setStatusText(const QString& text) {
     statusBar()->showMessage(text);
+}
+
+// Programs 리스트 접기/펼치기 및 접힌 헤더 이름 갱신 편의 슬롯 (Application 용).
+void ControlWindow::showPagesTab() {
+    // 3안 재재배치: 탭이 아니라 세로 스택. "페이지 탭으로 스위치" 의미는 이제
+    // "프로그램 리스트를 접어 페이지에 공간을 준다"로 재해석.
+    if (m_programList) m_programList->setCollapsed(true);
+}
+void ControlWindow::showProgramsTab() {
+    if (m_programList) m_programList->setCollapsed(false);
 }
 
 // LiveMirror: 폴링된 프레임을 우상단 Live 패널에 반영.

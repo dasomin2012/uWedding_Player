@@ -7,6 +7,7 @@
 #include <QEvent>
 #include <QFileInfo>
 #include <QFontMetrics>
+#include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
 #include <QLabel>
@@ -26,10 +27,11 @@
 
 namespace uwp {
 
-// 좌측 컬럼(240px 폭 근처) 안에서 세로 스택으로 여러 페이지 카드를 노출하려면
-// 카드가 작아야 한다. 16:9 썸네일 148×84 를 기준으로 카드 총 크기 168×130.
-static const QSize kThumbSize(148, 84);
-static const QSize kCardSize (170, 132);
+// 하단 [프로그램][페이지] 탭에서 가로 스트립으로 표시.
+// 프로그램 카드(212×172, 썸네일 180×101)와 사이즈 통일해 탭 스위칭 시
+// 컨텐츠 영역 높이가 튀지 않도록 함.
+static const QSize kThumbSize(180, 101);
+static const QSize kCardSize (212, 172);
 static constexpr int kActiveRole = Qt::UserRole + 1;
 
 static QPixmap makeDefaultThumb() {
@@ -173,16 +175,16 @@ PageListWidget::PageListWidget(QWidget* parent)
 {
     m_list = new QListWidget(this);
     m_list->setViewMode(QListView::IconMode);
-    m_list->setFlow(QListView::TopToBottom);      // 세로 스택
+    m_list->setFlow(QListView::LeftToRight);      // 가로 스트립 (ProgramListWidget 과 통일)
     m_list->setWrapping(false);
     m_list->setResizeMode(QListView::Adjust);
     m_list->setMovement(QListView::Static);
     m_list->setIconSize(kThumbSize);
     m_list->setGridSize(kCardSize);
-    m_list->setSpacing(4);
+    m_list->setSpacing(6);
     m_list->setUniformItemSizes(true);
-    m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_list->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_list->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_list->setContextMenuPolicy(Qt::CustomContextMenu);
     m_list->viewport()->setAttribute(Qt::WA_Hover);
     m_list->setMouseTracking(true);
@@ -194,27 +196,33 @@ PageListWidget::PageListWidget(QWidget* parent)
             emit deleteRequested(id);
         }, m_list));
 
+    // 상단 툴바: [페이지 제목]  ─────  [+ 페이지 추가].
+    //   프로그램 리스트 헤더와 시각 일관성 (bold 제목 + 우측 액션 버튼).
+    auto* title = new QLabel(tr("페이지"));
+    title->setStyleSheet("font-weight: bold;");
+
     auto* btnAdd = new QPushButton(tr("+ 페이지 추가"));
-    btnAdd->setEnabled(false);   // 프로그램 로드되어야 활성
-    connect(btnAdd, &QPushButton::clicked, this, &PageListWidget::addRequested);
-    // 프로그램 유무 = m_list 존재 페이지 유무로 판단은 부정확 — 대신 setProgram 이
-    // enable 상태를 갱신.
+    btnAdd->setEnabled(false);
     btnAdd->setObjectName("PageAddButton");
+    connect(btnAdd, &QPushButton::clicked, this, &PageListWidget::addRequested);
+
+    auto* topRow = new QHBoxLayout;
+    topRow->setContentsMargins(0, 0, 0, 0);
+    topRow->addWidget(title);
+    topRow->addStretch();
+    topRow->addWidget(btnAdd);
 
     auto* lay = new QVBoxLayout(this);
     lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(4);
+    lay->addLayout(topRow);
     lay->addWidget(m_list, 1);
-    lay->addWidget(btnAdd);
 
     connect(m_list, &QListWidget::itemClicked, this, [this](QListWidgetItem* it){
         if (it) emit pageSelected(it->data(Qt::UserRole).toString());
     });
     connect(m_list, &QListWidget::customContextMenuRequested,
             this, &PageListWidget::showContextMenu);
-
-    // + 버튼 enable 은 setProgram 에서 갱신 — 여기서는 setProperty 로 캐시.
-    btnAdd->setProperty("_addBtn", true);
 }
 
 void PageListWidget::setProgram(const Program* program, const QString& dataDir) {

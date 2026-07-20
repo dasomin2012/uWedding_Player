@@ -90,6 +90,42 @@ public:
         const bool sel    = (opt.state & QStyle::State_Selected);
         const bool active = idx.data(kActiveRole).toBool();
 
+        // 접힘 모드: 썸네일·뱃지 모두 생략, 이름만 알약(pill) 형태로.
+        //   활성(재생중) = 크림슨 배경 + 흰 텍스트
+        //   선택(편집 대상) = 앰버 배경 + 검정 텍스트 (선명한 대비)
+        //   기본 = 팔레트 Base 배경 + 팔레트 Text
+        const bool collapsedMode = property("collapsedMode").toBool();
+        if (collapsedMode) {
+            const QRect pill = card.adjusted(2, 2, -2, -2);
+            // 배경/테두리 — 팔레트 의존 대신 고정 톤으로 언제나 눈에 띄게.
+            //   기본: 밝은 크림 + 얇은 브론즈 테두리
+            //   hover: 살짝 진한 크림
+            //   active: 크림슨
+            //   selected: 앰버
+            QColor bg      = QColor(0xff, 0xff, 0xff);
+            QColor border  = QColor(0xd3, 0xc8, 0xb8);
+            QColor textCol = QColor(0x1c, 0x15, 0x12);   // 딥 텍스트 상시
+            if (active)      { bg = QColor(0xd6, 0x33, 0x24); border = bg; textCol = Qt::white; }
+            else if (sel)    { bg = QColor(0xf5, 0x9e, 0x0b); border = QColor(0xd9, 0x77, 0x06); }
+            else if (hover)  { bg = QColor(0xf5, 0xed, 0xe0); border = QColor(0xb9, 0x8a, 0x5e); }
+            p->setPen(QPen(border, 1));
+            p->setBrush(bg);
+            p->drawRoundedRect(pill, 6, 6);
+
+            // 이름 — 굵게, 명확한 대비색.
+            QFont f = opt.font;
+            f.setBold(true);
+            p->setFont(f);
+            p->setPen(textCol);
+            const QString name = idx.data(Qt::DisplayRole).toString();
+            const QRect textRect = pill.adjusted(8, 0, -8, 0);
+            QFontMetrics fm(f);
+            p->drawText(textRect, Qt::AlignCenter,
+                        fm.elidedText(name, Qt::ElideRight, textRect.width()));
+            p->restore();
+            return;
+        }
+
         // 썸네일 rect — 카드 상단 중앙. 모든 오버레이(뱃지/테두리)의 기준.
         const QRect iconRect(card.x() + (card.width() - kThumbSize.width()) / 2,
                              card.y() + kPad,
@@ -107,7 +143,7 @@ public:
 
         // 강조 테두리 — 썸네일 사각형에 딱 맞춰, 직사각형(pen alignment 반영).
         //   active   → 3px 크림슨
-        //   selected → 2px 팔레트 하이라이트(브론즈/샴페인)
+        //   selected → 3px 앰버 (기존 2px 팔레트 색은 안 보였다는 피드백 반영)
         //   pen 은 절반이 밖으로 그려지므로 rect 를 안쪽으로 살짝 밀어 시각적 정렬.
         if (active) {
             QPen pen(QColor(0xd6, 0x33, 0x24), 3);
@@ -116,7 +152,7 @@ public:
             p->setBrush(Qt::NoBrush);
             p->drawRect(iconRect.adjusted(1, 1, -1, -1));
         } else if (sel) {
-            QPen pen(opt.palette.color(QPalette::Highlight), 2);
+            QPen pen(QColor(0xf5, 0x9e, 0x0b), 3);   // amber 500
             pen.setJoinStyle(Qt::MiterJoin);
             p->setPen(pen);
             p->setBrush(Qt::NoBrush);
@@ -124,15 +160,22 @@ public:
         }
 
         // 이름 — 썸네일 바로 아래, 단일 라인 elide.
+        //   선택 상태에서는 이름 영역에 앰버 배경 + 검정 텍스트 → 확실히 눈에 띔.
         const QString name = idx.data(Qt::DisplayRole).toString();
         QFontMetrics fm(opt.font);
         const QRect nameRect(card.x() + kPad,
                              iconRect.bottom() + kPad,
                              card.width() - kPad * 2,
                              fm.height() + 2);
-        p->setPen(opt.palette.color(QPalette::Text));
+        if (sel && !active) {
+            p->setPen(Qt::NoPen);
+            p->setBrush(QColor(0xf5, 0x9e, 0x0b));
+            p->drawRoundedRect(nameRect.adjusted(-2, 0, 2, 0), 4, 4);
+        }
+        p->setPen(sel && !active ? QColor(0x1c, 0x15, 0x12)
+                                 : opt.palette.color(QPalette::Text));
         QFont nameFont = opt.font;
-        nameFont.setBold(active);
+        nameFont.setBold(active || sel);
         p->setFont(nameFont);
         p->drawText(nameRect, Qt::AlignHCenter | Qt::AlignVCenter,
                     fm.elidedText(name, Qt::ElideRight, nameRect.width()));
@@ -261,15 +304,25 @@ private:
 ProgramListWidget::ProgramListWidget(QWidget* parent)
     : QWidget(parent)
 {
-    auto* title  = new QLabel(tr("프로그램"));
-    title->setStyleSheet("font-weight: bold;");
+    m_title = new QLabel(tr("프로그램"));
+    m_title->setStyleSheet("font-weight: bold;");
+
+    // 접기/펼치기 토글 — 접으면 카드 리스트 숨김, 헤더에 프로그램 이름 표시.
+    m_btnToggle = new QPushButton(QStringLiteral("∧"));
+    m_btnToggle->setObjectName("ProgramCollapseBtn");
+    m_btnToggle->setToolTip(tr("접기 / 펼치기"));
+    m_btnToggle->setFixedSize(22, 22);
+    connect(m_btnToggle, &QPushButton::clicked, this,
+            [this]{ setCollapsed(!m_collapsed); });
+
     auto* btnAdd = new QPushButton(tr("+ 추가"));
     btnAdd->setToolTip(tr("현재 씬을 프로그램으로 저장"));
     connect(btnAdd, &QPushButton::clicked, this, &ProgramListWidget::addRequested);
 
     auto* top = new QHBoxLayout;
     top->setContentsMargins(0, 0, 0, 0);
-    top->addWidget(title);
+    top->addWidget(m_btnToggle);
+    top->addWidget(m_title);
     top->addStretch();
     top->addWidget(btnAdd);
 
@@ -307,14 +360,26 @@ ProgramListWidget::ProgramListWidget(QWidget* parent)
     lay->addWidget(m_list);
 
     connect(m_list, &QListWidget::itemClicked, this, [this](QListWidgetItem* it) {
-        if (it) emit programSelected(it->data(Qt::UserRole).toString());
+        if (!it) return;
+        // 다른 카드의 selected 상태를 즉시 해제 — 앰버 하이라이트 잔재 방지.
+        for (int i = 0; i < m_list->count(); ++i)
+            m_list->item(i)->setSelected(m_list->item(i) == it);
+        m_list->viewport()->update();
+        emit programSelected(it->data(Qt::UserRole).toString());
     });
     // UI-C: 더블클릭도 Preview 로드만. Live 송출은 오직 TAKE 버튼으로 (§운영자 요구).
     connect(m_list, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
-        if (it) emit programSelected(it->data(Qt::UserRole).toString());
+        if (!it) return;
+        for (int i = 0; i < m_list->count(); ++i)
+            m_list->item(i)->setSelected(m_list->item(i) == it);
+        m_list->viewport()->update();
+        emit programSelected(it->data(Qt::UserRole).toString());
     });
     connect(m_list, &QListWidget::customContextMenuRequested,
             this, &ProgramListWidget::showContextMenu);
+
+    // 초기 상태: 펼침 (setCollapsed 와 동일 계산치, 스크롤바 여유 포함).
+    setFixedHeight(234);
 }
 
 QString ProgramListWidget::currentId() const {
@@ -347,19 +412,22 @@ void ProgramListWidget::setPrograms(const QVector<Program>& programs,
         //   시간" 등으로 재정의 예정.
         item->setData(kDisplayTimeRole, p.pages.isEmpty() ? 0
                                                           : p.pages.first().displayTimeSec);
+        // 현재 접힘 상태에 맞춰 sizeHint 지정 — setPrograms 가 접힘 중에 불려도 정확.
+        item->setSizeHint(m_collapsed ? QSize(200, 36) : kCardSize);
     }
     setActiveProgram(m_activeId);   // 강조 유지
 }
 
 void ProgramListWidget::selectProgram(const QString& id) {
     if (id.isEmpty()) { m_list->clearSelection(); m_list->setCurrentItem(nullptr); return; }
+    // 명시적으로 각 항목 selected 상태 갱신 (다중 하이라이트 방지).
     for (int i = 0; i < m_list->count(); ++i) {
         QListWidgetItem* it = m_list->item(i);
-        if (it->data(Qt::UserRole).toString() == id) {
-            m_list->setCurrentItem(it);
-            return;
-        }
+        const bool match = (it->data(Qt::UserRole).toString() == id);
+        it->setSelected(match);
+        if (match) m_list->setCurrentItem(it);
     }
+    m_list->viewport()->update();
 }
 
 void ProgramListWidget::updateItem(const QString& id, const Program& p,
@@ -414,6 +482,63 @@ void ProgramListWidget::showContextMenu(const QPoint& pos) {
         emit displayTimeEditRequested(id);
     } else if (chosen == endActionAct) {
         emit endActionEditRequested(id);
+    }
+}
+
+// ---- 접기 / 펼치기 -------------------------------------------------
+// 접힘: 카드는 유지하되 썸네일 숨김 → 이름 pill 만 노출. 여러 프로그램 이름을
+// 한 눈에 확인하며 스위칭 가능. 델리게이트 paint 는 property("collapsedMode") 를
+// 읽어 분기.
+void ProgramListWidget::setCollapsed(bool collapsed) {
+    if (m_collapsed == collapsed) return;
+    m_collapsed = collapsed;
+    if (m_btnToggle) m_btnToggle->setText(collapsed ? QStringLiteral("∨")
+                                                    : QStringLiteral("∧"));
+    updateHeaderLabel();
+
+    if (!m_list) { updateGeometry(); return; }
+
+    if (auto* del = m_list->itemDelegate())
+        del->setProperty("collapsedMode", collapsed);
+
+    const QSize cell = collapsed ? QSize(200, 36) : kCardSize;
+    if (collapsed) {
+        m_list->setIconSize(QSize(0, 0));
+        // 헤더(32) + pill(36) + 가로 스크롤바(~18) + 레이아웃 여백 = ~96.
+        // 프로그램이 많아져 스크롤바가 뜰 때도 pill 이 잘리지 않도록.
+        setFixedHeight(96);
+    } else {
+        m_list->setIconSize(kThumbSize);
+        // 헤더(32) + 카드(172) + 스크롤바(~18) + 여유 = ~234.
+        setFixedHeight(234);
+    }
+    m_list->setGridSize(cell);
+    // gridSize 변경이 기존 items 에 즉시 반영되도록 각 item 의 sizeHint 도 명시.
+    //   (QListView 의 uniformItemSizes 캐시가 이전 크기를 붙잡는 사례 회피)
+    for (int i = 0; i < m_list->count(); ++i)
+        m_list->item(i)->setSizeHint(cell);
+    m_list->doItemsLayout();
+    m_list->viewport()->update();
+    updateGeometry();
+    emit collapseChanged(collapsed);
+}
+
+void ProgramListWidget::setCurrentProgramName(const QString& name) {
+    if (m_currentProgramName == name) return;
+    m_currentProgramName = name;
+    updateHeaderLabel();
+}
+
+void ProgramListWidget::updateHeaderLabel() {
+    if (!m_title) return;
+    if (m_collapsed) {
+        // 접힌 상태: 현재 편집 대상 프로그램 이름을 헤더에 노출 → 사용자가
+        // 프로그램 카드를 보지 않고도 "지금 뭐 편집중" 즉시 확인.
+        m_title->setText(m_currentProgramName.isEmpty()
+            ? tr("프로그램: (선택 없음)")
+            : tr("프로그램: %1").arg(m_currentProgramName));
+    } else {
+        m_title->setText(tr("프로그램"));
     }
 }
 
