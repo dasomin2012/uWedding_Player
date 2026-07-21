@@ -393,7 +393,14 @@ bool Application::initialize() {
     // ----- 표시 -----
     m_controlWindow->showMaximized();   // 처음 실행 시 전체화면(최대화)
     if (!useObs) {
-        m_liveWindow->showOnMonitor(m_settings.outputMonitorIndex());
+        // qt 엔진: outputMode 에 따라 fullscreen 또는 임의 좌표.
+        if (m_settings.outputMode() == QStringLiteral("screen")) {
+            m_liveWindow->showAtGeometry(
+                m_settings.outputX(),     m_settings.outputY(),
+                m_settings.canvasWidth(), m_settings.canvasHeight());
+        } else {
+            m_liveWindow->showOnMonitor(m_settings.outputMonitorIndex());
+        }
     } else {
         qInfo() << "engine=obs — Live output via OBS projector "
                    "(LiveWindow hidden)";
@@ -484,8 +491,14 @@ void Application::installQtFallback(const QString& reason) {
         m_takeController->setMode(TransitionEffect::Mode::Cut);
     }
 
-    // 3) OBS 경로에서 숨겨져 있던 LiveWindow 표시
-    m_liveWindow->showOnMonitor(m_settings.outputMonitorIndex());
+    // 3) OBS 경로에서 숨겨져 있던 LiveWindow 표시 — outputMode 따라 dispatch.
+    if (m_settings.outputMode() == QStringLiteral("screen")) {
+        m_liveWindow->showAtGeometry(
+            m_settings.outputX(),     m_settings.outputY(),
+            m_settings.canvasWidth(), m_settings.canvasHeight());
+    } else {
+        m_liveWindow->showOnMonitor(m_settings.outputMonitorIndex());
+    }
 
     // 4) 현재 Preview 를 즉시 다시 take (Live 검정 회피 — best-effort).
     //    이 시점에서 m_qtFallbackActive 는 아직 false → taken 핸들러는
@@ -678,10 +691,14 @@ void Application::onDisplaySettingsRequested() {
     } else
 #endif
     {
-        // qt 백엔드: 지금은 모니터 이동만 라이브 지원. 스크린 좌표 모드
-        // (LiveWindow 임의 geometry) 는 다음 실행 시 적용.
+        // qt 백엔드: mode 에 따라 fullscreen(모니터) 또는 임의 좌표 라이브 반영.
         if (m_liveWindow) {
-            m_liveWindow->showOnMonitor(newMon);
+            if (newMode == QStringLiteral("screen")) {
+                m_liveWindow->showAtGeometry(
+                    newGeo.x(), newGeo.y(), newGeo.width(), newGeo.height());
+            } else {
+                m_liveWindow->showOnMonitor(newMon);
+            }
             outputChanged = true;
         }
     }

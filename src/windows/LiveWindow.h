@@ -30,6 +30,10 @@ public:
 
     void setCanvasSize(int width, int height) override;
     void showOnMonitor(int monitorIndex) override;
+    // 스크린 모드: 데스크톱 가상 좌표계 위 임의 사각형에 frameless 로 배치.
+    //   OBS 백엔드의 setProjectorGeometry 와 대응 — LED 스크린이 특정 모니터
+    //   부분 영역이거나 여러 모니터에 걸친 경우용. 이미 표시중이면 재배치.
+    void showAtGeometry(int x, int y, int width, int height);
 
     // 씬을 스테이징→준비대기→원자적 commit. commit 완료 시 onCommitted 호출.
     void applyScene(const QVector<Layer>& layers,

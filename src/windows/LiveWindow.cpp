@@ -280,6 +280,42 @@ void LiveWindow::showOnMonitor(int monitorIndex) {
             << (m_devMode ? "(dev mode)" : "(fullscreen)");
 }
 
+// ---- 스크린 모드 (임의 좌표/크기 frameless) --------------------
+// showOnMonitor 는 fullscreen 이지만, 여기는 데스크톱 가상 좌표계 위 임의
+// 사각형에 배치. OBS 백엔드의 setProjectorGeometry 와 UX 대응 — LED 스크린
+// 이 특정 모니터의 부분 영역이거나 여러 모니터에 걸친 웨딩홀 세팅용.
+//
+// fullscreen 이 아니라 일반 창이지만 FramelessWindowHint 로 테두리 제거 →
+// 지정 좌표/크기에 픽셀 1:1. Preview 캔버스와 같은 논리 캔버스 크기면
+// mapRect 가 identity 로 동작해 왜곡 없음.
+void LiveWindow::showAtGeometry(int x, int y, int width, int height) {
+    if (width < 1 || height < 1) {
+        qWarning() << "LiveWindow::showAtGeometry: invalid size"
+                   << width << "x" << height;
+        return;
+    }
+    // fullscreen 잔재 정리 — showOnMonitor 와 동일 이유.
+    if (isVisible()) showNormal();
+
+    setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+    setCursor(Qt::BlankCursor);
+    const QRect g(x, y, width, height);
+    setGeometry(g);
+    show();
+    // 좌표에 해당하는 화면(있으면)에 windowHandle 명시 → 크로스 모니터일 때도
+    // 표시가 확실. QGuiApplication::screenAt 은 좌표 → 스크린 조회.
+    if (auto* wh = windowHandle()) {
+        if (QScreen* s = QGuiApplication::screenAt(QPoint(x, y)))
+            wh->setScreen(s);
+    }
+    setGeometry(g);  // setScreen 후 재확정 (좌표 클램프 회피)
+    relayoutList(m_layers);
+    relayoutList(m_pending);
+
+    qInfo() << "LiveWindow: shown at geometry"
+            << width << "x" << height << "@" << x << "," << y;
+}
+
 void LiveWindow::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
     relayoutList(m_layers);
