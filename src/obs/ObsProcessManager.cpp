@@ -9,6 +9,8 @@
 #include <QDir>
 #include <QCoreApplication>
 #include <QJsonObject>
+#include <QSettings>
+#include <QTextCodec>
 #include <QDebug>
 
 #include <functional>
@@ -176,6 +178,11 @@ void ObsProcessManager::start() {
     // "이미 실행 중" 다이얼로그 예방 + 포트 4455 점유 충돌 방지.
     // 우리 pid 는 아직 없으므로 무조건 전량 스윕(기동 전이라 자기충돌 없음).
     sweepStrayObsProcesses();
+
+    // 4096 상한 우회 — obs-websocket SetVideoSettings 는 4096 하드코딩이지만
+    // libobs 코어는 16384 지원. 프로파일 INI 에 사전 기록해 OBS 기동 시
+    // 그 값으로 캔버스 초기화. Application 이 setInitialCanvas() 로 값 주입.
+    writeCanvasToProfileIni();
 
     if (!m_proc) {
         m_proc = new QProcess(this);
@@ -507,6 +514,64 @@ void ObsProcessManager::sweepStrayObsProcesses() {
         qInfo() << "ObsProcessManager: swept" << killed
                 << "/" << seen << "stray obs64.exe process(es)";
 #endif
+}
+
+// ---- 4096 캔버스 상한 우회: 프로파일 INI 사전 기록 -------------
+// obs-websocket SetVideoSettings 는 baseWidth/Height 를 4096 으로 하드 캡
+// (obs-websocket 최신 master 확인). libobs 코어는 16384 지원. 따라서 OBS
+// 실행 전 프로파일의 basic.ini [Video] 섹션을 직접 써서 OBS 가 큰 해상도로
+// 시작하도록 한다. 이후 obs-websocket SetVideoSettings 를 우리가 호출해도
+// 4096 초과면 실패하지만, INI 값이 이미 로드돼 있으므로 실 동작에는 문제 없음.
+//
+// 경로:  <obsRoot>/config/obs-studio/user.ini  → [Basic] ProfileDir
+//        <obsRoot>/config/obs-studio/basic/profiles/<ProfileDir>/basic.ini
+// UTF-8 인코딩 (한글 프로파일 이름 대응).
+void ObsProcessManager::writeCanvasToProfileIni() {
+    if (m_initCanvasW <= 0 || m_initCanvasH <= 0) return;  // 값 없음 = 스킵
+
+    const QString root = portableConfigDir();     // <obsRoot>/config/obs-studio
+    if (root.isEmpty()) {
+        qInfo() << "ObsProcessManager: portable config dir not found — "
+                   "skip canvas INI pre-write";
+        return;
+    }
+
+    // 프로파일 디렉터리 이름 조회.
+    QSettings userIni(root + QStringLiteral("/user.ini"), QSettings::IniFormat);
+    userIni.setIniCodec("UTF-8");
+    QString profileDir = userIni.value(QStringLiteral("Basic/ProfileDir")).toString();
+    if (profileDir.isEmpty()) {
+        // 파일 없거나 값 없으면 후보 폴더 스캔. 하나뿐이면 그거 사용.
+        QDir profs(root + QStringLiteral("/basic/profiles"));
+        const QStringList list = profs.entryList(
+            QDir::Dirs | QDir::NoDotAndDotDot);
+        if (list.size() == 1) profileDir = list.first();
+    }
+    if (profileDir.isEmpty()) {
+        qInfo() << "ObsProcessManager: profile dir unknown — skip canvas INI";
+        return;
+    }
+
+    const QString profilePath = root
+        + QStringLiteral("/basic/profiles/") + profileDir
+        + QStringLiteral("/basic.ini");
+    QDir().mkpath(QFileInfo(profilePath).absolutePath());
+
+    QSettings basic(profilePath, QSettings::IniFormat);
+    basic.setIniCodec("UTF-8");
+    basic.setValue(QStringLiteral("Video/BaseCX"),   m_initCanvasW);
+    basic.setValue(QStringLiteral("Video/BaseCY"),   m_initCanvasH);
+    basic.setValue(QStringLiteral("Video/OutputCX"), m_initCanvasW);
+    basic.setValue(QStringLiteral("Video/OutputCY"), m_initCanvasH);
+    basic.sync();
+    if (basic.status() != QSettings::NoError) {
+        qWarning() << "ObsProcessManager: basic.ini write status="
+                   << basic.status() << "path=" << profilePath;
+    } else {
+        qInfo() << "ObsProcessManager: canvas INI pre-write"
+                << m_initCanvasW << "x" << m_initCanvasH
+                << "→ profile" << profileDir;
+    }
 }
 
 // ---- Job Object 부착 (Windows) ---------------------------------

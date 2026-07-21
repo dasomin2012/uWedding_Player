@@ -42,12 +42,12 @@ DisplaySettingsDialog::DisplaySettingsDialog(QWidget* parent,
     m_w = new QSpinBox(this);  m_h = new QSpinBox(this);
 
     // 다중 모니터 좌측/상단이 있으면 음수 좌표가 정상. 넉넉한 범위.
-    // 해상도(W×H) 상한 = OBS 32.x 캔버스 상한 4096 (obs-websocket validation).
-    // 4096 초과 요청은 SetVideoSettings 가 실패해 캔버스가 이전값에 갇힘.
-    // 물리 LED 가 4096 을 넘으면 좌표(X/Y)로 실물 크기를 지정하고 캔버스는
-    // 4096 이내 값으로 축소 → 프로젝터가 실물 크기로 stretch 하도록 운용.
+    // 해상도(W×H) 상한 = libobs 코어 상한 16384. obs-websocket 은 라이브
+    // SetVideoSettings 를 4096 으로 캡하지만, 우리는 OBS 프로파일 basic.ini
+    // 사전 기록으로 우회한다(ObsProcessManager::writeCanvasToProfileIni).
+    // → 4096 초과 값은 OBS 다음 기동부터 반영(현재 세션은 4096 라이브 캡 유지).
     m_x->setRange(-32768, 32768);  m_y->setRange(-32768, 32768);
-    m_w->setRange(64, 4096);        m_h->setRange(64, 4096);
+    m_w->setRange(64, 16384);       m_h->setRange(64, 16384);
     m_x->setSuffix(" px");  m_y->setSuffix(" px");
     m_w->setSuffix(" px");  m_h->setSuffix(" px");
     m_x->setValue(currentGeometry.x());
@@ -155,7 +155,8 @@ void DisplaySettingsDialog::updateEnabledStates() {
     } else {
         m_hint->setText(tr("데스크톱 가상 좌표계에서 지정한 영역에만 송출합니다. "
                            "LED 스크린이 특정 모니터의 부분 영역이거나 여러 "
-                           "모니터에 걸쳐 있을 때 사용."));
+                           "모니터에 걸쳐 있을 때 사용. "
+                           "해상도 4096 초과는 다음 OBS 재기동부터 적용됩니다."));
     }
 }
 

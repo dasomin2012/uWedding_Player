@@ -7,6 +7,7 @@
 #include <QMutex>
 #include <QSharedMemory>
 #include <QTextStream>
+#include <QThread>
 
 #include "app/Application.h"
 #include "app/CrashHandler.h"
@@ -74,8 +75,19 @@ int main(int argc, char* argv[]) {
     // 충돌·씬 오염이 발생. QSharedMemory 로 OS-레벨 자동 정리(우리가 크래시해도
     // Windows 는 프로세스 핸들과 함께 세그먼트 회수) 보장.
     // 키: 로컬 사용자별 유일화 위해 조직·앱명 프리픽스 (Hanmac 계열 규칙).
+    //
+    // 재시작(디스플레이 설정 변경) 시나리오: 부모가 startDetached 로 자식 spawn
+    // 후 quit() 하는 짧은 순간, 자식이 락을 못 잡을 수 있음. 짧게 재시도해서
+    // 부모 exit 대기(최대 ~3초). 진짜 중복 실행이면 재시도 후에도 실패 → 종료.
     QSharedMemory instanceLock(QStringLiteral("Hanmac-uWeddingPlayer-instance"));
-    if (!instanceLock.create(1)) {
+    bool locked = instanceLock.create(1);
+    if (!locked && instanceLock.error() == QSharedMemory::AlreadyExists) {
+        for (int i = 0; i < 30 && !locked; ++i) {
+            QThread::msleep(100);
+            locked = instanceLock.create(1);
+        }
+    }
+    if (!locked) {
         if (instanceLock.error() == QSharedMemory::AlreadyExists) {
             qWarning() << "uWeddingPlayer: 이미 실행 중 — 두 번째 인스턴스 종료";
             QMessageBox::information(nullptr,

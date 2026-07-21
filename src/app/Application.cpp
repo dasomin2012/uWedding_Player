@@ -36,6 +36,7 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QMessageBox>
+#include <QProcess>
 #include <QPointer>
 #include <QRadioButton>
 #include <QScreen>
@@ -302,6 +303,11 @@ bool Application::initialize() {
                 m_settings.outputX(),  m_settings.outputY(),
                 m_settings.canvasWidth(), m_settings.canvasHeight());
         }
+        // 4096 캔버스 상한 우회 — OBS 시작 전에 프로파일 INI 에 원하는 해상도
+        // 를 사전 기록. libobs 코어는 16384 까지 지원하므로 이 경로로 큰 캔버스
+        // 지정 가능(obs-websocket 은 여전히 4096 캡이라 라이브 변경만 제한).
+        m_obsProc->setInitialCanvas(
+            m_settings.canvasWidth(), m_settings.canvasHeight());
         qInfo() << "engine=obs — launching managed OBS";
         m_obsProc->start();
     }
@@ -643,6 +649,11 @@ void Application::onDisplaySettingsRequested() {
 #if defined(UWP_HAS_OBS)
         if (m_obsBackend)
             m_obsBackend->setCanvasSize(newCanvas.width(), newCanvas.height());
+        // 4096 상한 우회: 다음 OBS 기동 때 INI 로 반영되도록 값 갱신.
+        // 라이브 SetVideoSettings 는 4096 이하만 성공(위에서 처리), 초과분은
+        // 다음 세션에서 INI 로 적용.
+        if (m_obsProc)
+            m_obsProc->setInitialCanvas(newCanvas.width(), newCanvas.height());
 #endif
     }
 
@@ -690,6 +701,28 @@ void Application::onDisplaySettingsRequested() {
 
     // 프로젝터 재오픈 후 현재 씬을 재커밋 → HWND 재바인딩/재적용.
     if (outputChanged && m_takeController) m_takeController->take();
+
+    // 캔버스 크기가 바뀐 경우, 4096 초과분은 OBS 프로파일 INI 로 저장돼
+    // 다음 기동에 반영된다(라이브 SetVideoSettings 는 4096 캡). 사용자에게
+    // 재시작 여부를 물어보고 예 선택 시 자동 재시작한다.
+    if (newCanvas != oldCanvas) {
+        const auto reply = QMessageBox::question(
+            m_controlWindow.get(),
+            tr("재시작이 필요합니다"),
+            tr("디스플레이 설정 변경을 완전히 반영하려면 재시작이 필요합니다.\n"
+               "지금 재시작하시겠습니까?"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::Yes);
+        if (reply == QMessageBox::Yes) {
+            // 자식 프로세스로 자신을 다시 실행한 뒤 종료 → 자식은 main.cpp
+            // 단일 인스턴스 락 재시도 로직(최대 3초)으로 부모 exit 대기.
+            const QString exe = QCoreApplication::applicationFilePath();
+            QProcess::startDetached(exe, QStringList{});
+            qInfo() << "Application: restart requested — launching child and quitting";
+            QMetaObject::invokeMethod(qApp, &QCoreApplication::quit,
+                                      Qt::QueuedConnection);
+        }
+    }
 }
 
 void Application::onOpenSettingsRequested() {

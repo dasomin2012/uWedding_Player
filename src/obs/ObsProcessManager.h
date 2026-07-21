@@ -41,6 +41,12 @@ public:
     void start();
     void stop();   // 정상 종료 (자동 재기동 안 함)
 
+    // 기동 시 OBS 프로파일 INI 에 반영할 캔버스 크기. obs-websocket 의
+    // SetVideoSettings 는 4096 상한 하드코딩 — libobs 코어 자체는 16384
+    // 까지 지원하므로 프로파일 basic.ini 를 사전에 기록해 우회한다.
+    // Application 이 start() 전에 settings.canvas 값으로 세팅.
+    void setInitialCanvas(int w, int h) { m_initCanvasW = w; m_initCanvasH = h; }
+
     // 풀스크린 프로젝터를 다른 모니터로 옮긴다(engine=obs 출력 모니터 변경).
     // Ready 상태면 기존 프로젝터 창을 닫고 새 모니터에 다시 연다. 아니면
     // 인덱스만 저장 → 다음 Ready 에서 새 모니터로 열린다. (OBS 재기동 없음)
@@ -72,6 +78,7 @@ private:
     QString portableConfigDir() const;  // <obsRoot>/config/obs-studio ("" = 못 찾음)
     void  cleanObsCrashState();         // 기동 전: 잔존 sentinel 제거 + ConfirmOnExit 해제
     void  sweepStrayObsProcesses();     // 기동 전: 우리와 무관한 obs64.exe 강제 종료
+    void  writeCanvasToProfileIni();    // 기동 전: 4096 상한 우회용 basic.ini [Video] 사전 기록
     void  scheduleRestart();
     void  hideObsMainWindow();          // Win32 (#ifdef _WIN32)
     void  closeProjectorWindows();      // Win32: 메인창 제외 가시 top-level 창 닫기
@@ -97,6 +104,11 @@ private:
     // projectorGeometry="WxH+X+Y" 로 windowed projector 를 연다.
     bool m_useGeometry = false;
     int  m_geoX = 0, m_geoY = 0, m_geoW = 1920, m_geoH = 1080;
+
+    // 기동 시 OBS 프로파일 basic.ini 에 사전 기록할 초기 캔버스. Application 이
+    // setInitialCanvas() 로 주입. 0 이면 INI 를 건드리지 않음(기존 값 유지).
+    int  m_initCanvasW = 0;
+    int  m_initCanvasH = 0;
 
     // Windows Job Object: KILL_ON_JOB_CLOSE 로 우리 프로세스 종료 시(정상/
     // 크래시/작업관리자 강제 종료 모두 포함) OBS 를 OS 가 자동 정리.
