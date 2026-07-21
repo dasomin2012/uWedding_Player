@@ -9,6 +9,7 @@
 #include <QTextStream>
 
 #include "app/Application.h"
+#include "app/CrashHandler.h"
 
 namespace {
 
@@ -64,6 +65,9 @@ int main(int argc, char* argv[]) {
     QApplication::setApplicationVersion("0.2.0");
 
     installFileLogger();
+    // P4: 크래시 시 mini-dump 저장 인프라. 로거 뒤에 등록해 실패 로그 확보.
+    uwp::installCrashHandler(
+        QCoreApplication::applicationDirPath() + "/data/crash");
     qInfo() << "==== uWeddingPlayer starting (Phase 2) ====";
 
     // 단일 인스턴스 락 — 두 번째 인스턴스가 뜨면 OBS 도 중복 기동되어 포트

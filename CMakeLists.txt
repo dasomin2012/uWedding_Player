@@ -107,6 +107,8 @@ set(UWP_SOURCES
 
     src/app/Application.h
     src/app/Application.cpp
+    src/app/CrashHandler.h
+    src/app/CrashHandler.cpp
     src/app/Settings.h
     src/app/Settings.cpp
 
@@ -174,6 +176,11 @@ target_link_libraries(uWeddingPlayer PRIVATE
     Qt5::Gui
     Qt5::Widgets
 )
+
+# P4: Windows 크래시 덤프 (MiniDumpWriteDump — dbghelp).
+if(WIN32)
+    target_link_libraries(uWeddingPlayer PRIVATE dbghelp)
+endif()
 
 if(UWP_HAS_VLC)
     target_compile_definitions(uWeddingPlayer PRIVATE UWP_HAS_VLC=1)
