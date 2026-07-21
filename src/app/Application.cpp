@@ -25,6 +25,7 @@
 
 #include <QButtonGroup>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -162,6 +163,8 @@ bool Application::initialize() {
             this, &Application::onPreviewCompleted);
     connect(m_controlWindow.get(), &ControlWindow::blackoutRequested,
             this, &Application::onBlackoutRequested);
+    connect(m_controlWindow.get(), &ControlWindow::playPauseRequested,
+            this, &Application::onPlayPauseRequested);
 
     connect(m_controlWindow.get(), &ControlWindow::selectOutputMonitorRequested,
             this, &Application::onSelectOutputMonitorRequested);
@@ -354,6 +357,9 @@ bool Application::initialize() {
         const int t = p->pages[idx].displayTimeSec;
         if (t > 0 && m_programAdvanceTimer)
             m_programAdvanceTimer->start(t * 1000);
+        // TAKE 는 "지금 이 씬 나가" — 재생 상태로 확정, 일시정지 해제.
+        m_playbackPaused = false;
+        m_controlWindow->setLiveState(ControlWindow::LiveState::Playing);
     });
     connect(m_controlWindow.get(), &ControlWindow::takeModeChanged,
             this, [this](const QString& mode) {
@@ -411,18 +417,9 @@ bool Application::initialize() {
                    "(LiveWindow hidden)";
     }
 
-    // ----- Phase 1: 테스트 영상 자동 재생 (qt 백엔드 전용) -----
-    if (!useObs) {
-        const QString videoPath = m_settings.testVideoPath();
-        if (videoPath.isEmpty()) {
-            qInfo() << "settings.test_video_path is empty — Live window "
-                       "stays black. Set it in" << m_settingsPath;
-        } else if (!QFileInfo::exists(videoPath)) {
-            qWarning() << "test_video_path does not exist:" << videoPath;
-        } else {
-            m_liveWindow->playVideo(videoPath);  // Live: 실제 재생 (편집과 독립)
-        }
-    }
+    // (Phase 1 잔재였던 test_video 자동 재생은 프로그램/페이지 기반 시스템
+    //  완성 후 제거 — Live 헤더 상태와 어긋나고 실사용에 방해. 필요하면
+    //  도구 → 테스트 영상 재생 메뉴 또는 UWP_AUTOTAKE=1 환경변수 사용.)
 
     // 검증/자동화 훅: UWP_AUTOTAKE=1 이면 시작 후 자동으로 Take 1회.
     if (qEnvironmentVariableIntValue("UWP_AUTOTAKE") > 0) {
@@ -903,6 +900,8 @@ void Application::playProgram(const QString& id) {
         pgl->setActivePage(m_editPageId);
     }
     m_controlWindow->setStatusText(tr("Playing: %1").arg(p->name));
+    m_playbackPaused = false;
+    m_controlWindow->setLiveState(ControlWindow::LiveState::Playing);
 
     playPageAt(p, 0);                   // 첫 페이지부터 재생
 }
@@ -926,6 +925,10 @@ void Application::playPageAt(const Program* p, int pageIdx) {
 
     const int t = p->pages[pageIdx].displayTimeSec;
     m_controlWindow->setPreviewDisplayTime(t);
+    // pause/resume elapsed 계산용 기준 시각. displayTime=0 이면 자동 진행
+    // 없으므로 pause 개념도 사실상 무의미하지만 기록해두면 무해.
+    m_pageStartMs   = QDateTime::currentMSecsSinceEpoch();
+    m_pauseRemainMs = 0;
     if (m_programAdvanceTimer) {
         m_programAdvanceTimer->stop();
         if (t > 0) {
@@ -992,7 +995,79 @@ void Application::stopProgramPlayback() {
     if (auto* pl = m_controlWindow->programList())
         pl->setActiveProgram(QString());
     m_controlWindow->setPreviewDisplayTime(-1);            // UI-F
+    m_playbackPaused = false;
+    m_controlWindow->setLiveState(ControlWindow::LiveState::Idle);
     m_controlWindow->setStatusText(tr("Program stopped"));
+}
+
+// 클러스터 ▶/⏸ 토글 — 컨텍스트별 재생/일시정지/재개.
+//   대기       → 편집중 프로그램 재생 시작 (blackout ON 이면 자동 해제)
+//   재생중     → 일시정지: 자동 진행 timer stop + 잔여 시간 저장 + 영상 정지
+//   일시정지  → 재개: 저장된 잔여 시간으로 timer 재시작 + 영상 재개
+void Application::onPlayPauseRequested() {
+    auto ensurePowerOn = [this]() {
+        if (m_blackoutActive) {
+            m_blackoutActive = false;
+            m_controlWindow->setBlackoutActive(false);
+        }
+    };
+
+    // (1) 재생중 → 일시정지
+    if (!m_currentProgramId.isEmpty() && !m_playbackPaused) {
+        // 현재 페이지의 남은 시간 계산 (auto-advance timer 기반).
+        // 무자동진행(displayTime=0) 또는 타이머 없으면 0 → 재개도 0 유지(자동 진행 없음).
+        int remainMs = 0;
+        if (m_programAdvanceTimer && m_programAdvanceTimer->isActive())
+            remainMs = m_programAdvanceTimer->remainingTime();
+        else if (m_programAdvanceTimer)
+            remainMs = 0;   // 이미 만료됐거나 시작 안 함
+        m_pauseRemainMs = qMax(0, remainMs);
+
+        if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
+        // Qt 엔진: 영상 레이어를 현재 프레임에 정지 → 사용자가 시각적으로 인지.
+        if (m_liveWindow) m_liveWindow->pauseAllVideos();
+        // (OBS 엔진의 ffmpeg_source pause 는 추후 obs-websocket
+        //  TriggerMediaInputAction 로 확장 가능 — 지금은 타이머만 정지.)
+
+        m_playbackPaused = true;
+        m_controlWindow->setLiveState(ControlWindow::LiveState::Paused);
+        m_controlWindow->setStatusText(
+            tr("일시정지 — 남은 %1초").arg(m_pauseRemainMs / 1000));
+        return;
+    }
+
+    // (2) 일시정지 → 재개 (저장된 남은 시간으로 재시작 + 영상 재개)
+    if (m_playbackPaused && !m_currentProgramId.isEmpty()) {
+        ensurePowerOn();
+        m_playbackPaused = false;
+        m_controlWindow->setLiveState(ControlWindow::LiveState::Playing);
+        // 영상 재개 → 정지된 프레임부터 이어짐.
+        if (m_liveWindow) m_liveWindow->resumeAllVideos();
+        // 자동 진행 타이머 재무장 — 저장한 남은 시간부터. 0 이면 자동 진행 없음.
+        if (m_programAdvanceTimer && m_pauseRemainMs > 0) {
+            m_programAdvanceTimer->start(m_pauseRemainMs);
+            qInfo() << "Page advance resumed:" << m_pauseRemainMs << "ms remaining";
+            // 기준 시각을 "지금 - (원래 duration - 남은시간)" 로 재조정 → 이후 재-pause 계산 정확.
+            const Program* p = m_programs->find(m_currentProgramId);
+            if (p && m_currentPageIdx >= 0 && m_currentPageIdx < p->pages.size()) {
+                const int totalMs = p->pages[m_currentPageIdx].displayTimeSec * 1000;
+                const qint64 elapsed = qint64(totalMs) - qint64(m_pauseRemainMs);
+                m_pageStartMs = QDateTime::currentMSecsSinceEpoch() - elapsed;
+            }
+        }
+        m_controlWindow->setStatusText(tr("재개"));
+        return;
+    }
+
+    // (3) 대기 → 편집중 프로그램 시작
+    if (m_editProgramId.isEmpty()) {
+        m_controlWindow->setStatusText(
+            tr("재생할 프로그램이 선택되어 있지 않습니다."));
+        m_controlWindow->setLiveState(ControlWindow::LiveState::Idle);
+        return;
+    }
+    ensurePowerOn();
+    playProgram(m_editProgramId);
 }
 
 // ---- Phase 5b — 편집 자동저장 (현재 편집 대상 program) ----------
@@ -1503,22 +1578,64 @@ void Application::onPageDisplayTimeEditRequested(const QString& pageId) {
         m_controlWindow->setPreviewDisplayTime(sec);
 }
 
-// 응급 F2B — Live 검정/복귀 토글. 상태 관리 + TakeController 로 위임.
-//   ON : applyScene({}) → LiveWindow 검정 배경 or OBS 빈 씬. 자동 진행 타이머 정지.
-//   OFF: 현재 SceneModel (편집 중 페이지) 을 다시 TAKE → Live 복귀.
-// TAKE 로 실제 컨텐츠 나가면 자동 OFF (위 takeRequested 핸들러).
+// Live 헤더 ON/OFF 토글 — 프로젝터 화면 마스크. clearLive 는 사용하지 않아
+// 페이지 상태(영상 위치/이미지 경과 시간)를 보존한다.
+//   OFF: 자동 진행 timer 남은시간 저장 · 영상 pause · 위젯 hide (검정 마스크)
+//   ON : 위젯 show · 영상 resume · timer 남은시간으로 재시작 (자동 재개는 OFF
+//        가 자동 pause 를 발생시킨 경우에만; 사용자 ⏸ 상태였다면 마스크만 해제)
 void Application::onBlackoutRequested() {
     if (!m_takeController) return;
     m_blackoutActive = !m_blackoutActive;
+
     if (m_blackoutActive) {
-        // 진행 중이던 자동 진행 정지 — 검정 상태에서 계속 진행하면 이상.
-        if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
-        m_takeController->clearLive();      // 빈 씬 → Live 검정
-        m_controlWindow->setStatusText(tr("BLACK — Live 검정 (다시 클릭하여 복귀)"));
+        // ---- OFF ----
+        const bool wasPlaying =
+            !m_playbackPaused && !m_currentProgramId.isEmpty();
+        if (wasPlaying) {
+            // 남은 시간 저장 + 자동 진행 타이머 정지 + 영상 pause.
+            int remainMs = 0;
+            if (m_programAdvanceTimer && m_programAdvanceTimer->isActive())
+                remainMs = m_programAdvanceTimer->remainingTime();
+            m_pauseRemainMs = qMax(0, remainMs);
+            if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
+            if (m_liveWindow) m_liveWindow->pauseAllVideos();
+            m_playbackPaused    = true;
+            m_autoPausedByOff   = true;   // ON 시 자동 resume 표식
+        }
+        // 화면 마스크 — 위젯을 파괴하지 않고 hide 만 → 페이지 상태 보존.
+        if (m_liveWindow) m_liveWindow->setMasked(true);
+        m_controlWindow->setLiveState(ControlWindow::LiveState::ScreenOff);
+        m_controlWindow->setStatusText(tr("Screen OFF"));
     } else {
-        // 현재 편집 페이지를 다시 Live 로 → 복귀.
-        m_takeController->take();
-        m_controlWindow->setStatusText(tr("BLACK 해제"));
+        // ---- ON ----
+        if (m_liveWindow) m_liveWindow->setMasked(false);
+        if (m_autoPausedByOff) {
+            // OFF 로 자동 pause 됐던 케이스 → 자동 resume.
+            m_autoPausedByOff = false;
+            m_playbackPaused  = false;
+            if (m_liveWindow) m_liveWindow->resumeAllVideos();
+            if (m_programAdvanceTimer && m_pauseRemainMs > 0) {
+                m_programAdvanceTimer->start(m_pauseRemainMs);
+                qInfo() << "OFF→ON resume:" << m_pauseRemainMs << "ms remaining";
+                // pageStartMs 재조정 — 이후 재 pause 계산 정확.
+                const Program* p = m_programs->find(m_currentProgramId);
+                if (p && m_currentPageIdx >= 0 && m_currentPageIdx < p->pages.size()) {
+                    const int totalMs = p->pages[m_currentPageIdx].displayTimeSec * 1000;
+                    const qint64 elapsed = qint64(totalMs) - qint64(m_pauseRemainMs);
+                    m_pageStartMs = QDateTime::currentMSecsSinceEpoch() - elapsed;
+                }
+            }
+            m_controlWindow->setLiveState(ControlWindow::LiveState::Playing);
+        } else {
+            // 사용자 ⏸ 상태였거나 idle. 마스크만 해제하고 상태는 유지.
+            if (m_currentProgramId.isEmpty())
+                m_controlWindow->setLiveState(ControlWindow::LiveState::Idle);
+            else
+                m_controlWindow->setLiveState(
+                    m_playbackPaused ? ControlWindow::LiveState::Paused
+                                     : ControlWindow::LiveState::Playing);
+        }
+        m_controlWindow->setStatusText(tr("Screen ON"));
     }
     m_controlWindow->setBlackoutActive(m_blackoutActive);
 }

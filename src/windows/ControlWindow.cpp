@@ -106,7 +106,7 @@ QPushButton#TransButton:pressed { background: #2a2320; }
 
 /* 응급 BLACK 토글 — 비활성: 흰 배경 + 검은 텍스트,
                    활성:   검은 배경 + 흰 텍스트. */
-QPushButton#BlackButton {
+QPushButton#LivePowerButton {
     background: #ffffff;
     color: #1c1512;
     border: 1px solid #d3c8b8;
@@ -116,14 +116,14 @@ QPushButton#BlackButton {
     padding: 14px 4px;
     letter-spacing: 0.05em;
 }
-QPushButton#BlackButton:hover  { background: #f5ede0; border-color: #b98a5e; }
-QPushButton#BlackButton:pressed { background: #ece0cc; }
-QPushButton#BlackButton:checked {
+QPushButton#LivePowerButton:hover  { background: #f5ede0; border-color: #b98a5e; }
+QPushButton#LivePowerButton:pressed { background: #ece0cc; }
+QPushButton#LivePowerButton:checked {
     background: #000000;
     color: #ffffff;
     border-color: #000000;
 }
-QPushButton#BlackButton:checked:hover { background: #1c1512; }
+QPushButton#LivePowerButton:checked:hover { background: #1c1512; }
 
 QPushButton#PreviewToolBtn {
     background: #ffffff;
@@ -341,7 +341,7 @@ QPushButton#TransButton:pressed { background: #a88760; }
 
 /* 응급 BLACK 토글 — 다크 팔레트: 비활성 시 크림 배경 + 딥 텍스트,
                                   활성 시 검은 배경 + 흰 텍스트. */
-QPushButton#BlackButton {
+QPushButton#LivePowerButton {
     background: #e8ddd0;
     color: #14100c;
     border: 1px solid #3a322c;
@@ -351,14 +351,14 @@ QPushButton#BlackButton {
     padding: 14px 4px;
     letter-spacing: 0.05em;
 }
-QPushButton#BlackButton:hover  { background: #d6c8b8; border-color: #c8a37a; }
-QPushButton#BlackButton:pressed { background: #b8a790; }
-QPushButton#BlackButton:checked {
+QPushButton#LivePowerButton:hover  { background: #d6c8b8; border-color: #c8a37a; }
+QPushButton#LivePowerButton:pressed { background: #b8a790; }
+QPushButton#LivePowerButton:checked {
     background: #000000;
     color: #ffffff;
     border-color: #000000;
 }
-QPushButton#BlackButton:checked:hover { background: #1c1512; }
+QPushButton#LivePowerButton:checked:hover { background: #1c1512; }
 
 QPushButton#PreviewToolBtn {
     background: #26211c;
@@ -532,6 +532,19 @@ QWidget* wrapPanel(QWidget* content, const QString& title = QString()) {
     return frame;
 }
 
+// 헤더 위젯을 직접 넣는 변형 — Live 송출 처럼 헤더에 라벨+버튼 구성을
+// 넣어야 할 때. content 는 헤더 아래로 배치.
+QWidget* wrapPanelWithHeader(QWidget* content, QWidget* headerWidget) {
+    auto* frame = new QFrame;
+    frame->setObjectName("Panel");
+    auto* v = new QVBoxLayout(frame);
+    v->setContentsMargins(10, 10, 10, 10);
+    v->setSpacing(6);
+    if (headerWidget) v->addWidget(headerWidget);
+    v->addWidget(content, 1);
+    return frame;
+}
+
 // ---- 외부 QSS 테마용 헬퍼 --------------------------------------------
 //   외부 QSS(GTRONICK Aqua/ElegantDark)는 일반 QPushButton 룰만 있어
 //   TAKE/BLACK/Fade 처럼 오브젝트이름으로 특수화한 안전 버튼들이 밋밋해진다.
@@ -564,7 +577,7 @@ QPushButton#TransButton {
 QPushButton#TransButton:hover  { background: #4d423a; }
 QPushButton#TransButton:pressed { background: #2a2320; }
 
-QPushButton#BlackButton {
+QPushButton#LivePowerButton {
     background: #ffffff;
     color: #1c1512;
     border: 1px solid #d3c8b8;
@@ -574,9 +587,9 @@ QPushButton#BlackButton {
     padding: 14px 4px;
     letter-spacing: 0.05em;
 }
-QPushButton#BlackButton:hover  { background: #f5ede0; border-color: #b98a5e; }
-QPushButton#BlackButton:pressed { background: #ece0cc; }
-QPushButton#BlackButton:checked {
+QPushButton#LivePowerButton:hover  { background: #f5ede0; border-color: #b98a5e; }
+QPushButton#LivePowerButton:pressed { background: #ece0cc; }
+QPushButton#LivePowerButton:checked {
     background: #000000;
     color: #ffffff;
     border-color: #000000;
@@ -799,15 +812,17 @@ void ControlWindow::createCentralLayout() {
         emit takeModeChanged(next.toLower());
     });
 
-    // 응급 BLACK 토글 — Live 즉시 검정/복귀. 상태 관리는 Application.
-    m_btnBlack = new QPushButton(QStringLiteral("BLACK"));
-    m_btnBlack->setObjectName("BlackButton");
-    m_btnBlack->setCheckable(true);
-    m_btnBlack->setMinimumHeight(52);
-    m_btnBlack->setFixedWidth(72);        // BLACK 5글자 여유
-    m_btnBlack->setToolTip(tr("응급 검정 화면 (클릭하여 켜기 / 끄기)"));
-    connect(m_btnBlack, &QPushButton::clicked, this,
-            [this]{ emit blackoutRequested(); });
+    // 재생/일시정지 아이콘 버튼 — Qt 표준 미디어 아이콘 (SP_MediaPlay/Pause).
+    // Application 이 컨텍스트별 판단 (대기 → 재생, 재생중 → 일시정지, 일시정지 → 재개).
+    m_btnPlayPause = new QPushButton;
+    m_btnPlayPause->setObjectName("PlayPauseButton");
+    m_btnPlayPause->setMinimumHeight(52);
+    m_btnPlayPause->setFixedWidth(64);
+    m_btnPlayPause->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    m_btnPlayPause->setIconSize(QSize(24, 24));
+    m_btnPlayPause->setToolTip(tr("재생 / 일시정지 (자동 진행 제어)"));
+    connect(m_btnPlayPause, &QPushButton::clicked, this,
+            [this]{ emit playPauseRequested(); });
 
     // ----- 컬럼 조립 -----
 
@@ -852,8 +867,29 @@ void ControlWindow::createCentralLayout() {
                 centerCol->setSizes({ topTarget, bottomTarget });
             });
 
-    // RIGHT TOP: Live mirror + TAKE 클러스터
-    auto* livePanel = wrapPanel(buildLivePanel(), tr("Live 송출"));
+    // RIGHT TOP: Live 헤더 — 상태 라벨 + 화면 마스크 ON/OFF 토글.
+    //   상태 라벨: 재생중(녹) / 일시정지(주황) / 대기(회) 3-state.
+    //   ON/OFF: 프로젝터 화면을 검정으로 마스크 (구 BLACK 응급 기능).
+    auto* liveHeader = new QWidget;
+    {
+        auto* hh = new QHBoxLayout(liveHeader);
+        hh->setContentsMargins(0, 0, 0, 0);
+        hh->setSpacing(8);
+        m_liveStatus = new QLabel;
+        m_liveStatus->setObjectName("LiveStatusLabel");
+        m_btnLivePower = new QPushButton(tr("ON"));
+        m_btnLivePower->setObjectName("LivePowerButton");
+        m_btnLivePower->setCheckable(true);
+        m_btnLivePower->setToolTip(
+            tr("프로젝터 화면 표시 ON/OFF — OFF 는 응급 검정 마스크"));
+        connect(m_btnLivePower, &QPushButton::clicked,
+                this, &ControlWindow::blackoutRequested);
+        hh->addWidget(m_liveStatus, 1);
+        hh->addWidget(m_btnLivePower);
+    }
+    auto* livePanel = wrapPanelWithHeader(buildLivePanel(), liveHeader);
+    setLiveState(LiveState::Idle);    // 초기 라벨/아이콘 통일
+    setLivePowerOff(false);           // 초기 ON
 
     // RIGHT BOTTOM: Property (자체 헤더 있음). 세로 공간이 부족할 때 하단
     // 버튼(레이어 삭제 등)이 잘리지 않도록 QScrollArea 로 감싸 스크롤 확보.
@@ -1082,13 +1118,13 @@ QWidget* ControlWindow::buildLivePanel() {
     v->setSpacing(8);
     v->addWidget(m_liveMirror, 1);
 
-    // [       TAKE       ] [Fade/Cut] [BLACK] — TAKE 는 늘어남, 나머지 컴팩트.
+    // [       TAKE       ] [Fade/Cut] [▶/⏸] — TAKE 는 늘어남, 나머지 컴팩트.
     auto* row = new QHBoxLayout;
     row->setSpacing(6);
     row->setContentsMargins(0, 0, 0, 0);
     row->addWidget(m_takeButton, 1);
     row->addWidget(m_btnTransition);
-    row->addWidget(m_btnBlack);
+    row->addWidget(m_btnPlayPause);
     v->addLayout(row);
 
     return box;
@@ -1190,10 +1226,56 @@ void ControlWindow::showProgramsTab() {
     if (m_programList) m_programList->setCollapsed(false);
 }
 
+// Live 헤더 상태 라벨 (4-state): 재생중(녹) · 일시정지(주황) · 대기(회) · Screen OFF(검).
+// 클러스터의 재생/일시정지 아이콘도 동기 갱신 (ScreenOff 는 pause 상태로 취급).
+void ControlWindow::setLiveState(LiveState s) {
+    if (m_liveStatus) {
+        switch (s) {
+        case LiveState::Playing:
+            m_liveStatus->setText(tr("● Live 재생중"));
+            m_liveStatus->setStyleSheet(QStringLiteral(
+                "color: #2ea043; font-weight: 700; letter-spacing: 0.06em;"));
+            break;
+        case LiveState::Paused:
+            m_liveStatus->setText(tr("● Live 일시정지"));
+            m_liveStatus->setStyleSheet(QStringLiteral(
+                "color: #e2a132; font-weight: 700; letter-spacing: 0.06em;"));
+            break;
+        case LiveState::ScreenOff:
+            m_liveStatus->setText(tr("● Screen OFF"));
+            m_liveStatus->setStyleSheet(QStringLiteral(
+                "color: #4a4038; font-weight: 700; letter-spacing: 0.06em;"));
+            break;
+        case LiveState::Idle:
+        default:
+            m_liveStatus->setText(tr("● Live 대기"));
+            m_liveStatus->setStyleSheet(QStringLiteral(
+                "color: #8a7d70; font-weight: 700; letter-spacing: 0.06em;"));
+            break;
+        }
+    }
+    setPlayPauseState(s);
+}
+
+// Live 헤더 ON/OFF 버튼 — off=true → 프로젝터 검정 마스크 상태.
+void ControlWindow::setLivePowerOff(bool off) {
+    if (!m_btnLivePower) return;
+    QSignalBlocker sb(m_btnLivePower);
+    m_btnLivePower->setChecked(off);
+    m_btnLivePower->setText(off ? tr("OFF") : tr("ON"));
+}
+
+// 이전 API 호환 — 이제 헤더 ON/OFF 버튼이 blackout 을 시각화한다.
 void ControlWindow::setBlackoutActive(bool active) {
-    if (!m_btnBlack) return;
-    // QSS :checked 로 배경/텍스트 색 전환 — checkable 버튼의 상태만 갱신.
-    m_btnBlack->setChecked(active);
+    setLivePowerOff(active);
+}
+
+// 클러스터의 재생/일시정지 아이콘 반영. 재생중=일시정지(누르면 pause), 그 외=재생.
+void ControlWindow::setPlayPauseState(LiveState s) {
+    if (!m_btnPlayPause) return;
+    m_btnPlayPause->setIcon(style()->standardIcon(
+        s == LiveState::Playing ? QStyle::SP_MediaPause
+                                : QStyle::SP_MediaPlay));
 }
 
 // LiveMirror: 폴링된 프레임을 우상단 Live 패널에 반영.

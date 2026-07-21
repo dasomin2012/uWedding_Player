@@ -49,9 +49,23 @@ public:
     bool playVideo(const QString& path);   // 단일 전체화면 영상 레이어
     void stopVideo();
 
+    // 자동 진행 pause/resume 지원 — 재생 중 영상 레이어들을 현재 프레임에
+    // 정지시켜 사용자에게 "일시정지" 시각을 확실히 전달. Qt 엔진 전용.
+    void pauseAllVideos();
+    void resumeAllVideos();
+    // Screen OFF/ON 마스크 — 레이어 위젯을 파괴하지 않고 hide/show 만.
+    // OFF: 위젯 hide → LiveWindow 검정 배경만 노출. VLC 영상은 별도 pause 필요.
+    // ON:  위젯 show → 원 컨텐츠 복귀. 페이지 상태·위치가 그대로 유지된다.
+    void setMasked(bool masked);
+    bool isMasked() const { return m_masked; }
+
 protected:
     void resizeEvent(QResizeEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    // 자식 native HWND (VLC 비디오) 가 destroy 되면 그 영역이 stale 하게
+    // 남아 있는 경우가 있어(WA_OpaquePaintEvent + native child 상호작용),
+    // 명시적으로 전체를 검정으로 채워 잔상 방지.
+    void paintEvent(QPaintEvent* event) override;
 
 private:
     struct LiveLayer {
@@ -79,6 +93,7 @@ private:
     int                    m_canvasWidth  = 1920;
     int                    m_canvasHeight = 1080;
     bool                   m_devMode      = false;
+    bool                   m_masked       = false;   // Screen OFF 마스크 상태
 };
 
 } // namespace uwp

@@ -36,6 +36,14 @@ public:
                   SnapshotCache* snapshots, QWidget* parent = nullptr);
     ~ControlWindow() override;
 
+    // Live 패널 상태 (setLiveState 슬롯 인자용) — MOC 는 slots 섹션 안의
+    // enum 을 파싱하지 못하므로 여기(public: 데이터 섹션)에 선언.
+    //   Idle     — 프로그램 재생 없음
+    //   Playing  — 자동 진행 중 (녹색)
+    //   Paused   — 자동 진행 일시정지 (주황) — 현재 페이지 프레임 정지 표시
+    //   ScreenOff — 프로젝터 화면 마스크 (검정 도트) — 자동 진행도 함께 일시정지
+    enum class LiveState { Idle, Playing, Paused, ScreenOff };
+
 public slots:
     void setStatusText(const QString& text);
 
@@ -58,6 +66,15 @@ public slots:
 
     // 응급 BLACK 버튼 시각 상태 — Application 이 실제 상태 관리.
     void setBlackoutActive(bool active);
+
+    // Live 패널의 3-축 시각 상태 (LiveState 는 public: 섹션에 선언).
+    //   1) 상태 라벨: 재생중(녹색) / 일시정지(주황) / 대기(회색)
+    //   2) ON/OFF 버튼 (헤더): 프로젝터 표시 마스크 상태 — Application 의
+    //      m_blackoutActive 를 반전. active=true → OFF, false → ON.
+    //   3) ▶/⏸ 버튼 (클러스터): 자동 진행 재생/일시정지 상태.
+    void setLiveState(LiveState s);
+    void setLivePowerOff(bool off);   // Live 헤더 ON/OFF 버튼 시각 상태
+    void setPlayPauseState(LiveState s);   // 클러스터 ▶/⏸ 아이콘 갱신
 
     // 리허설 체인 (Loop/Next/First) 연속 재생 시 카운트다운만 재시작.
     //   newTotalSec: 다음 프로그램의 displayTimeSec (0 = 새 프로그램이 수동
@@ -83,8 +100,11 @@ signals:
     // 카운트다운이 자연 만료 (auto-complete). Application 이 프로그램의
     // endAction 을 조회해 체인(반복/다음/첫)·정지·유지 중 하나를 실행.
     void previewCompleted();
-    // 응급 F2B 토글. Application 이 상태 관리 + setBlackoutActive 로 시각 회신.
+    // 응급 F2B 토글 — 헤더 ON/OFF 버튼이 발화. Application 이 상태 관리.
     void blackoutRequested();
+    // 클러스터 ▶/⏸ 버튼 — 재생/일시정지 토글. Application 이 컨텍스트
+    // (재생중이면 pause, 일시정지면 resume, 대기면 편집중 프로그램 재생)로 판단.
+    void playPauseRequested();
 
 private:
     void createMenus();
@@ -109,7 +129,10 @@ private:
     //  applyScene({}) 가 LiveWindow 검정 배경을 그대로 보여준다.
     QPushButton*  m_takeButton      = nullptr;   // TAKE (큰 빨간 버튼)
     QPushButton*  m_btnTransition   = nullptr;   // Fade ↔ Cut 토글 (한 버튼)
-    QPushButton*  m_btnBlack        = nullptr;   // 응급 F2B 토글 (BLACK)
+    // 구 BLACK 버튼(클러스터)은 재생/일시정지 아이콘 버튼으로 교체.
+    QPushButton*  m_btnPlayPause    = nullptr;   // ▶/⏸ 자동 진행 제어
+    QLabel*       m_liveStatus      = nullptr;   // Live 헤더 상태 라벨(3-state)
+    QPushButton*  m_btnLivePower    = nullptr;   // Live 헤더 ON/OFF 마스크 토글
 
     // UX-1: 상태표시줄 위젯 (색 도트 + 엔진/모니터 라벨 + 시계).
     QLabel*  m_statusObsDot      = nullptr;

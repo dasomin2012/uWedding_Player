@@ -10,6 +10,8 @@
 #include <QResizeEvent>
 #include <QLabel>
 #include <QTimer>
+#include <QPainter>
+#include <QPaintEvent>
 #include <QPalette>
 #include <QFileInfo>
 #include <QtMath>
@@ -183,6 +185,12 @@ void LiveWindow::commitPending(bool byTimeout) {
         if (ll.widget) { ll.widget->show(); ll.widget->raise(); }
     }
 
+    // BLACK/Stop 처럼 새 씬이 비면 자식 native HWND 를 지운 것만으로는
+    // 부모 QWidget 이 자동 재도색되지 않아 이전 프레임이 남는 경우가 있음
+    // (WA_OpaquePaintEvent + native child 조합의 Windows-side 아티팩트).
+    // 명시적으로 재도색 강제 → 팔레트의 검정 배경이 즉시 노출된다.
+    if (m_layers.isEmpty()) update();
+
     // 노출 완료 → 정지(cue)된 영상들을 동시에 재개 → 동기 재생
     for (LiveLayer& ll : m_layers)
         if (ll.isVideo)
@@ -314,6 +322,41 @@ void LiveWindow::showAtGeometry(int x, int y, int width, int height) {
 
     qInfo() << "LiveWindow: shown at geometry"
             << width << "x" << height << "@" << x << "," << y;
+}
+
+// 항상 검정으로 채움 — 자식 native HWND (VLC 비디오) 가 hide/destroy 될 때
+// 그 영역이 이전 픽셀 그대로 남는 Windows-side 잔상 방지. WA_OpaquePaintEvent
+// 를 유지한 채 명시 paintEvent 로 픽셀 확정.
+void LiveWindow::paintEvent(QPaintEvent* event) {
+    QPainter p(this);
+    p.fillRect(event->rect(), Qt::black);
+}
+
+// 자동 진행 일시정지 — 현재 재생 중인 모든 영상 레이어를 현재 프레임에 정지.
+// 이미지 레이어는 정적이라 그대로 두어도 시각적 변화 없음.
+void LiveWindow::pauseAllVideos() {
+    for (LiveLayer& ll : m_layers)
+        if (ll.isVideo)
+            if (auto* vw = qobject_cast<VideoWidget*>(ll.widget)) vw->freeze();
+}
+
+void LiveWindow::resumeAllVideos() {
+    for (LiveLayer& ll : m_layers)
+        if (ll.isVideo)
+            if (auto* vw = qobject_cast<VideoWidget*>(ll.widget)) vw->resume();
+}
+
+// Screen OFF/ON 마스크 — 위젯을 파괴하지 않아 페이지 상태(영상 위치·이미지)
+// 그대로 유지. hide() 는 native HWND(VLC)의 SW_HIDE 로 처리되어 검정 배경 노출.
+void LiveWindow::setMasked(bool masked) {
+    if (m_masked == masked) return;
+    m_masked = masked;
+    for (LiveLayer& ll : m_layers) {
+        if (!ll.widget) continue;
+        if (masked) ll.widget->hide();
+        else        ll.widget->show();
+    }
+    if (masked) update();   // native HWND destroy 잔상 방지 (paintEvent 로 검정)
 }
 
 void LiveWindow::resizeEvent(QResizeEvent* event) {

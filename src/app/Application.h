@@ -75,6 +75,12 @@ private slots:
     // 응급 BLACK 토글 (Live 검정 / 복귀).
     void onBlackoutRequested();
 
+    // 클러스터 ▶/⏸ 토글 — 컨텍스트별 재생/일시정지/재개.
+    //   대기 → 편집중 프로그램 첫 페이지부터 재생 (m_editProgramId 필요)
+    //   재생중 → 일시정지 (자동 진행 타이머 stop, Live 유지)
+    //   일시정지 → 재개 (현재 페이지 처음부터 카운트다운 재시작)
+    void onPlayPauseRequested();
+
 private:
     QString resolveSettingsPath() const;
     QString resolveScenePath() const;
@@ -144,6 +150,17 @@ private:
 
     // 응급 F2B — Live 검정 상태. 이후 TAKE 발생 시 자동 해제.
     bool    m_blackoutActive = false;
+    // 자동 진행 일시정지 상태. m_currentProgramId/PageIdx 유지, 타이머 stop,
+    // 영상 레이어 freeze. 재개 시 저장된 잔여 시간으로 타이머 재무장 + 재개.
+    bool    m_playbackPaused = false;
+    // 페이지 시작 절대 시각 (currentMSecsSinceEpoch). pause 시 elapsed 계산용.
+    // 0 = 시작 시각 미기록 (자동 진행 미사용 페이지 또는 pause 대상 아님).
+    qint64  m_pageStartMs    = 0;
+    // pause 시 저장한 남은 밀리초. resume 시 이 값으로 timer 재시작.
+    int     m_pauseRemainMs  = 0;
+    // OFF 로 인해 자동 pause 처리했는지 — true 면 ON 시 자동 resume.
+    // false 면(이미 사용자 ⏸ 상태였으면) ON 시 마스크만 해제.
+    bool    m_autoPausedByOff = false;
     QTimer* m_editSaveTimer  = nullptr;   // 편집 자동저장 디바운스
     bool    m_suppressEditSave = false;   // 프로그램 로드 중 모델변경을 편집으로 오인 방지
 
