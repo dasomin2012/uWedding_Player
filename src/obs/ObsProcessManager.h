@@ -67,6 +67,7 @@ private:
     QString resolveExePath() const;     // "" = 못 찾음
     QString portableConfigDir() const;  // <obsRoot>/config/obs-studio ("" = 못 찾음)
     void  cleanObsCrashState();         // 기동 전: 잔존 sentinel 제거 + ConfirmOnExit 해제
+    void  sweepStrayObsProcesses();     // 기동 전: 우리와 무관한 obs64.exe 강제 종료
     void  scheduleRestart();
     void  hideObsMainWindow();          // Win32 (#ifdef _WIN32)
     void  closeProjectorWindows();      // Win32: 메인창 제외 가시 top-level 창 닫기

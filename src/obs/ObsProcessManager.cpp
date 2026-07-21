@@ -16,6 +16,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <tlhelp32.h>
 #endif
 
 namespace uwp {
@@ -168,6 +169,11 @@ void ObsProcessManager::start() {
     // obs-websocket 을 비활성화하므로 engine=obs 송출 불가).
     cleanObsCrashState();
 
+    // 우리 세션과 무관한 obs64.exe(이전 세션 orphan 등)를 제거 → OBS 자체
+    // "이미 실행 중" 다이얼로그 예방 + 포트 4455 점유 충돌 방지.
+    // 우리 pid 는 아직 없으므로 무조건 전량 스윕(기동 전이라 자기충돌 없음).
+    sweepStrayObsProcesses();
+
     if (!m_proc) {
         m_proc = new QProcess(this);
         connect(m_proc, &QProcess::started,
@@ -180,7 +186,10 @@ void ObsProcessManager::start() {
     }
 
     m_proc->setProgram(exe);
+    // --multi: 스윕이 실패했거나 우리가 놓친 인스턴스가 있어도 OBS 의
+    //          "이미 실행 중" 다이얼로그를 원천 억제. 벨트+서스펜더.
     m_proc->setArguments({ QStringLiteral("--portable"),
+                           QStringLiteral("--multi"),
                            QStringLiteral("--disable-updater"),
                            QStringLiteral("--disable-shutdown-check") });
     // OBS 는 작업 디렉터리 기준으로 data/ 를 찾으므로 exe 폴더로 고정.
@@ -429,6 +438,45 @@ void ObsProcessManager::closeProjectorWindows() {
     EnumWindows(closeProjEnumProc, reinterpret_cast<LPARAM>(&ctx));
     qInfo() << "ObsProcessManager: closed" << ctx.closed
             << "projector window(s) (excluding main)";
+#endif
+}
+
+// ---- 시작 시 stray obs64.exe 스윕 (Windows) --------------------
+// 우리 프로세스 crash / 이전 세션 orphan / 사용자가 수동 실행한 잔재를 모두
+// 제거. Job Object 가 부모-in-job 환경에서 KILL_ON_JOB_CLOSE 로 청소하지
+// 못하는 케이스의 실질적 방어선. 우리 pid 는 아직 없으므로(m_pid==0) 전량 kill.
+// 재기동(restart) 시엔 m_pid 가 이전 실행 값이지만 그 프로세스는 이미 죽어
+// snapshot 에 없다 → 안전.
+void ObsProcessManager::sweepStrayObsProcesses() {
+#ifdef _WIN32
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) {
+        qWarning() << "ObsProcessManager: sweep snapshot failed "
+                      "(GetLastError=" << GetLastError() << ")";
+        return;
+    }
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof(entry);
+    int killed = 0, seen = 0;
+    if (Process32FirstW(snap, &entry)) {
+        do {
+            if (_wcsicmp(entry.szExeFile, L"obs64.exe") != 0) continue;
+            ++seen;
+            // 이전 세션의 pid 와 같아도 이미 죽었을 것이라 자기충돌 없음.
+            HANDLE h = OpenProcess(
+                PROCESS_TERMINATE | SYNCHRONIZE, FALSE, entry.th32ProcessID);
+            if (!h) continue;
+            if (TerminateProcess(h, 1)) {
+                WaitForSingleObject(h, 2000);   // 확실히 죽을 때까지
+                ++killed;
+            }
+            CloseHandle(h);
+        } while (Process32NextW(snap, &entry));
+    }
+    CloseHandle(snap);
+    if (seen > 0)
+        qInfo() << "ObsProcessManager: swept" << killed
+                << "/" << seen << "stray obs64.exe process(es)";
 #endif
 }
 
