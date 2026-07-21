@@ -134,10 +134,15 @@ bool Application::initialize() {
         &m_settings, m_scene.get(), m_snapshotCache.get());
     m_liveWindow    = std::make_unique<LiveWindow>(m_playerPool.get());
     m_liveWindow->setCanvasSize(m_settings.canvasWidth(), m_settings.canvasHeight());
+    // ControlWindow 를 닫으면 앱이 종료되도록 — LiveWindow/rehearsal 는
+    // quit 판정에서 제외. (기본 quitOnLastWindowClosed 는 모든 top-level 창을
+    // 카운트해서, LiveWindow 가 살아있으면 앱 프로세스가 남아 있게 된다.)
+    m_liveWindow->setAttribute(Qt::WA_QuitOnClose, false);
 
     // 리허설(미리보기 재생) 창 — Control 모니터에 뜨는 non-fullscreen LiveWindow.
     // 캔버스 비율 유지하며 폭 800px 상한, 높이 600px 상한.
     m_rehearsalWindow = std::make_unique<LiveWindow>(m_playerPool.get());
+    m_rehearsalWindow->setAttribute(Qt::WA_QuitOnClose, false);
     m_rehearsalWindow->setWindowTitle(tr("미리보기 재생"));
     m_rehearsalWindow->setCanvasSize(m_settings.canvasWidth(),
                                      m_settings.canvasHeight());
