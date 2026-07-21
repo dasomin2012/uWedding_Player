@@ -56,6 +56,9 @@ ObsProcessManager::~ObsProcessManager() {
     if (m_heartbeat)   m_heartbeat->stop();
     if (m_connectTimer) m_connectTimer->stop();
     if (m_restartTimer) m_restartTimer->stop();
+    // stop() 없이 소멸자만 실행되는 경로에서도 클라이언트 콜백이 kill 도중
+    // 발화해 wrong-thread 로 QTimer::stop 을 부르지 않도록 명시 disconnect.
+    if (m_client) m_client->disconnectFromObs();
     if (m_proc && m_proc->state() != QProcess::NotRunning) {
         m_proc->kill();
         m_proc->waitForFinished(3000);

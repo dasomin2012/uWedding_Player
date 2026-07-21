@@ -507,6 +507,13 @@ void Application::installQtFallback(const QString& reason) {
 
 void Application::shutdown() {
     flushEditSave();   // 종료 전 대기중 편집 저장 확정
+
+    // 종료 도중 새 take/자동진행/미러 폴링이 발화하는 것 방지 (backend 리셋
+    // 후 dangling 접근 위험).
+    if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
+    if (m_liveMirrorTimer)     m_liveMirrorTimer->stop();
+    if (m_editSaveTimer)       m_editSaveTimer->stop();
+
     if (m_liveWindow) m_liveWindow->stopVideo();
     if (m_scene) {
         SceneSerializer::saveScene(*m_scene, resolveScenePath());
@@ -514,6 +521,21 @@ void Application::shutdown() {
     if (!m_settingsPath.isEmpty()) {
         m_settings.save(m_settingsPath);   // media_dir 등 보존
     }
+
+    // OBS teardown 은 여기서(=aboutToQuit 콜백, 이벤트 루프 아직 살아있음)
+    // 명시적으로 처리한다. Application 소멸자로 미루면 QCoreApplication
+    // exec 루프가 이미 리턴된 상태에서 QProcess 내부 notifier 콜백이
+    // wrong-thread 로 dispatch 되어 "Timers cannot be stopped from another
+    // thread" 경고가 로그 마지막 줄로 찍히는 케이스를 재현했음(P3 조사).
+    // stop() 은 client close → kill → waitForFinished(3s) 를 이벤트 루프
+    // 활성 상태에서 순서대로 처리하므로 소멸자에서 하던 것과 안전성 차이가 큼.
+#if defined(UWP_HAS_OBS)
+    if (m_obsProc) {
+        m_obsProc->stop();
+    }
+    m_obsBackend.reset();   // 이후 소멸자엔 남은 게 없어 no-op
+    m_obsProc.reset();
+#endif
 }
 
 void Application::onSelectOutputMonitorRequested() {
