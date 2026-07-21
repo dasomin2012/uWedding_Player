@@ -45,6 +45,10 @@ public:
     // Ready 상태면 기존 프로젝터 창을 닫고 새 모니터에 다시 연다. 아니면
     // 인덱스만 저장 → 다음 Ready 에서 새 모니터로 열린다. (OBS 재기동 없음)
     void setProjectorMonitor(int monitorIndex);
+    // 스크린 모드: 데스크톱 가상 좌표계 위 임의 사각형에 windowed projector.
+    // OBS 는 monitorIndex=-1 + projectorGeometry="WxH+X+Y" 로 이를 지원.
+    // Ready 면 즉시 재오픈, 아니면 값만 저장 → 다음 Ready 때 사용.
+    void setProjectorGeometry(int x, int y, int w, int h);
 
     State      state()  const { return m_state; }
     ObsClient* client() const { return m_client; }  // O4 가 동일 연결 재사용
@@ -71,7 +75,8 @@ private:
     void  scheduleRestart();
     void  hideObsMainWindow();          // Win32 (#ifdef _WIN32)
     void  closeProjectorWindows();      // Win32: 메인창 제외 가시 top-level 창 닫기
-    void  openProgramProjector();       // best-effort
+    void  openProgramProjector();       // best-effort — monitor 또는 geometry 모드
+    void  makeProjectorBorderless();    // 스크린 모드용: WS_POPUP 로 테두리 제거 + 정확 배치
 
     ObsConfig  m_cfg;            // 값 복사 (Settings 수명과 분리)
     QProcess*  m_proc        = nullptr;
@@ -87,6 +92,11 @@ private:
     int   m_hbFailStreak   = 0;
     qint64 m_pid           = 0;
     void* m_mainHwnd       = nullptr;     // 숨긴 OBS 메인창 HWND (프로젝터 식별용)
+
+    // 스크린 모드 지원 — true 면 openProgramProjector 가 monitorIndex=-1 +
+    // projectorGeometry="WxH+X+Y" 로 windowed projector 를 연다.
+    bool m_useGeometry = false;
+    int  m_geoX = 0, m_geoY = 0, m_geoW = 1920, m_geoH = 1080;
 
     // Windows Job Object: KILL_ON_JOB_CLOSE 로 우리 프로세스 종료 시(정상/
     // 크래시/작업관리자 강제 종료 모두 포함) OBS 를 OS 가 자동 정리.

@@ -71,6 +71,7 @@ public:
 
 signals:
     void selectOutputMonitorRequested();
+    void displaySettingsRequested();   // 캔버스 해상도 + 송출 모니터 통합
     void openSettingsRequested();
     void playTestVideoRequested();
     void saveSceneRequested();

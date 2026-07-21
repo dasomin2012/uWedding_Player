@@ -38,6 +38,9 @@ bool Settings::load(const QString& path) {
 
     m_outputMonitorIndex     = s.value("output_monitor_index").toInt(m_outputMonitorIndex);
     m_outputRenderMode       = s.value("output_render_mode").toString(m_outputRenderMode);
+    m_outputMode             = s.value("output_mode").toString(m_outputMode);
+    m_outputX                = s.value("output_x").toInt(m_outputX);
+    m_outputY                = s.value("output_y").toInt(m_outputY);
     m_takeDefaultMode        = s.value("take_default_mode").toString(m_takeDefaultMode);
     m_takeFadeDurationMs     = s.value("take_fade_duration_ms").toInt(m_takeFadeDurationMs);
     m_testVideoPath          = s.value("test_video_path").toString(m_testVideoPath);
@@ -107,6 +110,9 @@ bool Settings::save(const QString& path) const {
     s["canvas"]                  = canvas;
     s["output_monitor_index"]    = m_outputMonitorIndex;
     s["output_render_mode"]      = m_outputRenderMode;
+    s["output_mode"]             = m_outputMode;
+    s["output_x"]                = m_outputX;
+    s["output_y"]                = m_outputY;
     s["take_default_mode"]       = m_takeDefaultMode;
     s["take_fade_duration_ms"]   = m_takeFadeDurationMs;
     s["test_video_path"]         = m_testVideoPath;

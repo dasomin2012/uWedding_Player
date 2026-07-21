@@ -11,6 +11,9 @@
 #include <QImage>
 #include <QJsonArray>
 
+#include <QTimer>
+
+#include <functional>
 #include <memory>
 
 namespace uwp {
@@ -43,7 +46,23 @@ void ObsLiveBackend::setCanvasSize(int width, int height) {
         QJsonObject d;
         d["baseWidth"]   = m_canvasW;  d["baseHeight"]   = m_canvasH;
         d["outputWidth"] = m_canvasW;  d["outputHeight"] = m_canvasH;
-        client()->request(QStringLiteral("SetVideoSettings"), d, {});
+        client()->request(QStringLiteral("SetVideoSettings"), d,
+            [this](bool ok, const QJsonObject&, const QString& c) {
+                qInfo() << "ObsLiveBackend[diag] SetVideoSettings"
+                        << m_canvasW << "x" << m_canvasH
+                        << (ok ? "OK" : "FAILED") << c;
+                // 성공 여부와 무관하게 OBS 가 실제 저장한 값 재조회.
+                if (ObsClient* cq = client())
+                    cq->request(QStringLiteral("GetVideoSettings"), {},
+                        [](bool ok2, const QJsonObject& r, const QString&) {
+                            if (!ok2) return;
+                            qInfo() << "ObsLiveBackend[diag] GetVideoSettings actual"
+                                    << "base=" << r.value("baseWidth").toInt()
+                                    << "x" << r.value("baseHeight").toInt()
+                                    << "output=" << r.value("outputWidth").toInt()
+                                    << "x" << r.value("outputHeight").toInt();
+                        });
+            });
     }
 }
 
@@ -92,13 +111,41 @@ void ObsLiveBackend::seed() {
     vid["outputWidth"]   = m_canvasW;  vid["outputHeight"]   = m_canvasH;
     vid["fpsNumerator"]  = 60;         vid["fpsDenominator"] = 1;
 
-    c->request(QStringLiteral("SetVideoSettings"), vid,
-        [this](bool ok, const QJsonObject&, const QString& cm) {
-            if (!ok) qWarning() << "ObsLiveBackend: SetVideoSettings —" << cm;
-            ObsClient* c2 = client();
-            if (!c2) return;
-            // 씬 보장
-            c2->request(QStringLiteral("GetSceneList"), {},
+    // SetVideoSettings 재시도 헬퍼 — OBS 컴포지터가 아직 준비 안 됐을 때
+    // ("OBS is not ready to perform the request.") 실패하는 케이스 대응.
+    // 성공 시 checkAndProceed 로 나머지 seed 단계(GetSceneList 등) 계속.
+    auto trySet = std::make_shared<std::function<void(int)>>();
+    *trySet = [this, vid, trySet](int retries) {
+        ObsClient* cs = client();
+        if (!cs) return;
+        cs->request(QStringLiteral("SetVideoSettings"), vid,
+            [this, vid, trySet, retries]
+            (bool ok, const QJsonObject&, const QString& cm) {
+                if (!ok) {
+                    // "OBS is not ready" 등 일시적 실패면 backoff 재시도.
+                    if (retries > 0 && cm.contains(QLatin1String("not ready"))) {
+                        qInfo() << "ObsLiveBackend: SetVideoSettings not ready — "
+                                   "retry in 500ms (" << retries << "left)";
+                        QTimer::singleShot(500, this,
+                            [trySet, retries] { (*trySet)(retries - 1); });
+                        return;
+                    }
+                    qWarning() << "ObsLiveBackend: SetVideoSettings —" << cm;
+                }
+                ObsClient* c2 = client();
+                if (!c2) return;
+                // 진단: OBS 가 실제 저장한 canvas 크기 확인 (seed 경로).
+                c2->request(QStringLiteral("GetVideoSettings"), {},
+                    [](bool ok3, const QJsonObject& r, const QString&) {
+                        if (!ok3) return;
+                        qInfo() << "ObsLiveBackend[diag] seed canvas actual"
+                                << "base=" << r.value("baseWidth").toInt()
+                                << "x" << r.value("baseHeight").toInt()
+                                << "output=" << r.value("outputWidth").toInt()
+                                << "x" << r.value("outputHeight").toInt();
+                    });
+                // 씬 보장
+                c2->request(QStringLiteral("GetSceneList"), {},
                 [this](bool ok2, const QJsonObject& d, const QString&) {
                     ObsClient* c3 = client();
                     if (!c3) return;
@@ -189,7 +236,10 @@ void ObsLiveBackend::seed() {
                                 });   // GetSceneTransitionList
                         });
                 });
-        });
+        });   // end SetVideoSettings callback
+    };        // end trySet lambda body
+    // OBS 컴포지터 초기화 완료 대기 최대 ~10s (500ms × 20회 재시도).
+    (*trySet)(20);
 }
 
 // ---- 적용 (off-air 씬 재구성 → 전환) --------------------------
@@ -302,28 +352,72 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
             }
             const int itemId = d.value("sceneItemId").toInt();
 
-            QJsonObject tr;
-            tr["positionX"]       = L.geometry.x();
-            tr["positionY"]       = L.geometry.y();
-            tr["boundsType"]      = QStringLiteral("OBS_BOUNDS_STRETCH");
-            tr["boundsAlignment"] = 5;  // top-left
-            tr["boundsWidth"]     = L.geometry.width();
-            tr["boundsHeight"]    = L.geometry.height();
+            // ─────────────────────────────────────────────────────────
+            // OBS 32.x 의 obs-websocket 은 sceneItemTransform 에서 boundsType
+            // 을 STRETCH 로 요청해도 실제 렌더는 SCALE_INNER(레터박스)로
+            // 처리되는 케이스가 관찰됨(진단 확인). 우회: source 의 원본 픽셀
+            // 크기(sourceWidth/Height)를 GetSceneItemTransform 으로 조회한 뒤
+            // 원하는 최종 크기에 맞춰 명시 scale 로 setter 한다. bounds 는
+            // NONE 로 두어 OBS 의 bounds 해석 로직에서 벗어난다 → Preview 와
+            // 픽셀 1:1 일치.
+            //
+            // sourceSize 는 source 가 로드되기 전에는 0. 로드까지 짧은 재시도.
+            // ─────────────────────────────────────────────────────────
+            auto applyScale = std::make_shared<std::function<void(int)>>();
+            *applyScale = [this, scene, inputName, itemId, i, L, next, applyScale]
+                          (int retries) {
+                ObsClient* cq = client();
+                if (!cq) { next(); return; }
+                QJsonObject q;
+                q["sceneName"]   = scene;
+                q["sceneItemId"] = itemId;
+                cq->request(QStringLiteral("GetSceneItemTransform"), q,
+                    [this, scene, inputName, itemId, i, L, next, applyScale, retries]
+                    (bool ok, const QJsonObject& r, const QString&) {
+                        if (!ok) { next(); return; }
+                        const auto t = r.value("sceneItemTransform").toObject();
+                        const double sw = t.value("sourceWidth").toDouble();
+                        const double sh = t.value("sourceHeight").toDouble();
+                        if ((sw <= 0.0 || sh <= 0.0) && retries > 0) {
+                            // source 아직 미로드 → 100ms 후 재시도.
+                            QTimer::singleShot(100, this,
+                                [applyScale, retries] { (*applyScale)(retries - 1); });
+                            return;
+                        }
+                        ObsClient* cs = client();
+                        if (!cs) { next(); return; }
+                        QJsonObject tr2;
+                        tr2["positionX"]  = L.geometry.x();
+                        tr2["positionY"]  = L.geometry.y();
+                        tr2["alignment"]  = 5;  // top-left
+                        tr2["boundsType"] = QStringLiteral("OBS_BOUNDS_NONE");
+                        if (sw > 0.0 && sh > 0.0) {
+                            tr2["scaleX"] = L.geometry.width()  / sw;
+                            tr2["scaleY"] = L.geometry.height() / sh;
+                        } else {
+                            // 최후 폴백 — sourceSize 조회 실패. 원본 크기 그대로 배치.
+                            tr2["scaleX"] = 1.0;
+                            tr2["scaleY"] = 1.0;
+                        }
+                        qInfo() << "ObsLiveBackend: layer" << inputName
+                                << "sourceSize=" << sw << "x" << sh
+                                << "→ scale=" << tr2["scaleX"].toDouble()
+                                << "x" << tr2["scaleY"].toDouble();
 
-            QJsonObject st;
-            st["sceneName"]          = scene;
-            st["sceneItemId"]        = itemId;
-            st["sceneItemTransform"] = tr;
-            c2->request(QStringLiteral("SetSceneItemTransform"), st,
-                [this, scene, inputName, itemId, i, L, next]
-                (bool, const QJsonObject&, const QString&) {
-                    ObsClient* c3 = client();
-                    if (!c3) { next(); return; }
-                    QJsonObject idx;
-                    idx["sceneName"]      = scene;
-                    idx["sceneItemId"]    = itemId;
-                    idx["sceneItemIndex"] = i;  // 레이어는 zIndex 오름차순
-                    c3->request(QStringLiteral("SetSceneItemIndex"), idx,
+                        QJsonObject st2;
+                        st2["sceneName"]          = scene;
+                        st2["sceneItemId"]        = itemId;
+                        st2["sceneItemTransform"] = tr2;
+                        cs->request(QStringLiteral("SetSceneItemTransform"), st2,
+                            [this, scene, inputName, itemId, i, L, next]
+                            (bool, const QJsonObject&, const QString&) {
+                                ObsClient* c3 = client();
+                                if (!c3) { next(); return; }
+                                QJsonObject idx;
+                                idx["sceneName"]      = scene;
+                                idx["sceneItemId"]    = itemId;
+                                idx["sceneItemIndex"] = i;
+                                c3->request(QStringLiteral("SetSceneItemIndex"), idx,
                         [this, inputName, L, next]
                         (bool, const QJsonObject&, const QString&) {
                             ObsClient* c4 = client();
@@ -342,9 +436,13 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
                                     f, {});
                             }
                             next();
-                        });
-                });
-        });
+                        });   // end SetSceneItemIndex callback
+                });           // end SetSceneItemTransform callback
+        });                   // end GetSceneItemTransform callback
+            };                // end applyScale lambda body
+            // source 로드 대기 최대 ~1s (100ms × 10회 재시도).
+            (*applyScale)(10);
+        });                   // end CreateInput callback
 }
 
 void ObsLiveBackend::triggerTransition(const QString& targetScene) {

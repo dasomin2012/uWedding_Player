@@ -43,6 +43,13 @@ public:
     int     outputMonitorIndex() const { return m_outputMonitorIndex; }
     void    setOutputMonitorIndex(int idx);
     QString outputRenderMode()   const { return m_outputRenderMode; }
+    // 출력 모드: "monitor"(모니터 전체) | "screen"(좌표+크기 지정) — 웨딩홀
+    // LED 스크린이 데스크톱 어느 좌표에 걸쳐 있어도 정확한 영역에 송출.
+    QString outputMode()         const { return m_outputMode; }
+    void    setOutputMode(const QString& m) { m_outputMode = m; }
+    int     outputX() const { return m_outputX; }
+    int     outputY() const { return m_outputY; }
+    void    setOutputOrigin(int x, int y) { m_outputX = x; m_outputY = y; }
 
     // ----- Take -----
     QString takeDefaultMode()    const { return m_takeDefaultMode; }
@@ -87,6 +94,9 @@ private:
     int     m_canvasHeight        = 1080;
     int     m_outputMonitorIndex  = 1;
     QString m_outputRenderMode    = "fit";   // fit | fill | stretch
+    QString m_outputMode          = "monitor"; // monitor | screen
+    int     m_outputX             = 0;
+    int     m_outputY             = 0;
     QString m_takeDefaultMode     = "fade";  // cut | fade
     int     m_takeFadeDurationMs  = 800;
     NovaStarConfig m_novaStar;

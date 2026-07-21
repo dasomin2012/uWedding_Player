@@ -1,6 +1,7 @@
 #include "Application.h"
 
 #include "windows/ControlWindow.h"
+#include "windows/DisplaySettingsDialog.h"
 #include "windows/LiveWindow.h"
 #include "live/ILiveSink.h"
 #include "player/LivePlayerPool.h"
@@ -158,6 +159,8 @@ bool Application::initialize() {
 
     connect(m_controlWindow.get(), &ControlWindow::selectOutputMonitorRequested,
             this, &Application::onSelectOutputMonitorRequested);
+    connect(m_controlWindow.get(), &ControlWindow::displaySettingsRequested,
+            this, &Application::onDisplaySettingsRequested);
     connect(m_controlWindow.get(), &ControlWindow::openSettingsRequested,
             this, &Application::onOpenSettingsRequested);
     connect(m_controlWindow.get(), &ControlWindow::playTestVideoRequested,
@@ -292,6 +295,13 @@ bool Application::initialize() {
                     installQtFallback(r);
                 });
         sink = m_obsBackend.get();
+        // 저장된 출력 모드가 스크린 좌표면 openProgramProjector 첫 호출부터
+        // 그 geometry 로 열리도록 미리 설정. (모니터 모드면 아무 것도 안 함)
+        if (m_settings.outputMode() == QStringLiteral("screen")) {
+            m_obsProc->setProjectorGeometry(
+                m_settings.outputX(),  m_settings.outputY(),
+                m_settings.canvasWidth(), m_settings.canvasHeight());
+        }
         qInfo() << "engine=obs — launching managed OBS";
         m_obsProc->start();
     }
@@ -590,6 +600,96 @@ void Application::onSelectOutputMonitorRequested() {
     // 모니터 이동 시 네이티브 윈도우가 재생성될 수 있으므로(플래그/스크린 변경)
     // 현재 씬을 새 모니터에 다시 commit → 재생 내용 유지 + HWND 재바인딩.
     if (m_takeController) m_takeController->take();
+}
+
+// 디스플레이 설정 — 모드 선택형 (monitor / screen).
+//   웨딩홀 LED 세팅용. 스크린 모드에서는 startX/Y + W×H 로 데스크톱 임의
+//   사각형에 정확히 송출(OBS windowed projector).
+void Application::onDisplaySettingsRequested() {
+    // 현재값 → 다이얼로그 초기화
+    const QString curMode = m_settings.outputMode();
+#if defined(UWP_HAS_OBS)
+    const bool obsActive =
+        (m_settings.engine().compare(QLatin1String("obs"),
+             Qt::CaseInsensitive) == 0) && !m_qtFallbackActive;
+    const int curMonIdx = obsActive ? m_settings.obs().projectorMonitor
+                                    : m_settings.outputMonitorIndex();
+#else
+    const int curMonIdx = m_settings.outputMonitorIndex();
+#endif
+    const QRect curGeo(m_settings.outputX(), m_settings.outputY(),
+                       m_settings.canvasWidth(), m_settings.canvasHeight());
+
+    DisplaySettingsDialog dlg(m_controlWindow.get(),
+                              curMode, curMonIdx, curGeo);
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    const QString newMode = dlg.mode();
+    const int     newMon  = dlg.monitorIndex();
+    const QRect   newGeo  = dlg.outputGeometry();  // 모니터 모드에서도 모니터 실제 사각형 채워 반환
+
+    // ---- 스크린(캔버스) 해상도 라이브 반영 --------------------
+    // 두 모드 모두 최종 W×H 가 SceneModel/LiveWindow/OBS 백엔드에 반영되어야
+    // Preview·Live 축척이 맞음. 좌표 X/Y 는 프로젝터 배치용.
+    const QSize oldCanvas = m_settings.canvasSize();
+    const QSize newCanvas(newGeo.width(), newGeo.height());
+    if (newCanvas != oldCanvas) {
+        m_settings.setCanvasSize(newCanvas.width(), newCanvas.height());
+        if (m_scene) m_scene->setCanvasSize(newCanvas);
+        if (m_liveWindow)
+            m_liveWindow->setCanvasSize(newCanvas.width(), newCanvas.height());
+        if (m_rehearsalWindow)
+            m_rehearsalWindow->setCanvasSize(newCanvas.width(), newCanvas.height());
+#if defined(UWP_HAS_OBS)
+        if (m_obsBackend)
+            m_obsBackend->setCanvasSize(newCanvas.width(), newCanvas.height());
+#endif
+    }
+
+    // ---- 모드/좌표/모니터 반영 (엔진별 분기) -------------------
+    m_settings.setOutputMode(newMode);
+    m_settings.setOutputOrigin(newGeo.x(), newGeo.y());
+    m_settings.setOutputMonitorIndex(newMon);
+#if defined(UWP_HAS_OBS)
+    m_settings.setObsProjectorMonitor(newMon);
+#endif
+
+    bool outputChanged = false;
+#if defined(UWP_HAS_OBS)
+    if (obsActive && m_obsProc) {
+        if (newMode == QStringLiteral("screen")) {
+            m_obsProc->setProjectorGeometry(
+                newGeo.x(), newGeo.y(), newGeo.width(), newGeo.height());
+        } else {
+            m_obsProc->setProjectorMonitor(newMon);
+        }
+        outputChanged = true;
+    } else
+#endif
+    {
+        // qt 백엔드: 지금은 모니터 이동만 라이브 지원. 스크린 좌표 모드
+        // (LiveWindow 임의 geometry) 는 다음 실행 시 적용.
+        if (m_liveWindow) {
+            m_liveWindow->showOnMonitor(newMon);
+            outputChanged = true;
+        }
+    }
+
+    m_settings.save(m_settingsPath);
+
+    // ---- 상태표시줄 안내 --------------------------------------
+    QStringList notes;
+    if (newCanvas != oldCanvas)
+        notes << tr("해상도 %1×%2").arg(newCanvas.width()).arg(newCanvas.height());
+    if (newMode == QStringLiteral("screen"))
+        notes << tr("스크린 %1,%2").arg(newGeo.x()).arg(newGeo.y());
+    else
+        notes << tr("모니터 %1번").arg(newMon);
+    m_controlWindow->setStatusText(
+        tr("디스플레이 적용: %1").arg(notes.join(QStringLiteral(" · "))));
+
+    // 프로젝터 재오픈 후 현재 씬을 재커밋 → HWND 재바인딩/재적용.
+    if (outputChanged && m_takeController) m_takeController->take();
 }
 
 void Application::onOpenSettingsRequested() {

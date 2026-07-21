@@ -114,6 +114,8 @@ set(UWP_SOURCES
 
     src/windows/ControlWindow.h
     src/windows/ControlWindow.cpp
+    src/windows/DisplaySettingsDialog.h
+    src/windows/DisplaySettingsDialog.cpp
     src/windows/LiveWindow.h
     src/windows/LiveWindow.cpp
 

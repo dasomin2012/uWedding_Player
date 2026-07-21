@@ -43,6 +43,7 @@ protected:
 
 private slots:
     void onSelectOutputMonitorRequested();
+    void onDisplaySettingsRequested();      // 캔버스 해상도 + 모니터 통합
     void onOpenSettingsRequested();
     void onPlayTestVideoRequested();
     void onSaveSceneRequested();

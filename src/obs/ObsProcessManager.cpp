@@ -409,20 +409,46 @@ void ObsProcessManager::hideObsMainWindow() {
 }
 
 // ---- 프로젝터 (best-effort) ------------------------------------
+// 두 모드 지원:
+//   * m_useGeometry = false → 풀스크린 (monitorIndex 사용)
+//   * m_useGeometry = true  → windowed (monitorIndex=-1 + projectorGeometry).
+//     LED 스크린이 데스크톱 부분 영역이거나 여러 모니터에 걸친 웨딩홀 세팅용.
 void ObsProcessManager::openProgramProjector() {
     if (!m_client) return;
     QJsonObject d;
     d[QStringLiteral("videoMixType")] =
         QStringLiteral("OBS_WEBSOCKET_VIDEO_MIX_TYPE_PROGRAM");
-    d[QStringLiteral("monitorIndex")] = m_cfg.projectorMonitor;
-    m_client->request(QStringLiteral("OpenVideoMixProjector"), d,
-        [](bool ok, const QJsonObject&, const QString& c) {
-            if (ok)
-                qInfo() << "ObsProcessManager: Program projector opened";
-            else
+    if (m_useGeometry) {
+        d[QStringLiteral("monitorIndex")] = -1;
+        d[QStringLiteral("projectorGeometry")] =
+            QStringLiteral("%1x%2+%3+%4")
+                .arg(m_geoW).arg(m_geoH).arg(m_geoX).arg(m_geoY);
+    } else {
+        d[QStringLiteral("monitorIndex")] = m_cfg.projectorMonitor;
+    }
+    // "OBS is not ready" 는 컴포지터가 아직 초기화 중일 때 발생 — backoff 재시도.
+    auto attempt = std::make_shared<int>(0);
+    auto run = std::make_shared<std::function<void()>>();
+    *run = [this, d, attempt, run]() {
+        ObsClient* c2 = m_client;
+        if (!c2) return;
+        c2->request(QStringLiteral("OpenVideoMixProjector"), d,
+            [this, attempt, run](bool ok, const QJsonObject&, const QString& c) {
+                if (ok) {
+                    qInfo() << "ObsProcessManager: Program projector opened";
+                    if (m_useGeometry) makeProjectorBorderless();
+                    return;
+                }
+                if (c.contains(QLatin1String("not ready")) && ++(*attempt) <= 20) {
+                    // 500ms × 최대 20회 (10초) — seed SetVideoSettings 와 동일 정책.
+                    QTimer::singleShot(500, this, [run]() { (*run)(); });
+                    return;
+                }
                 qWarning() << "ObsProcessManager: OpenVideoMixProjector "
                               "failed (obs-websocket 버전 의존) —" << c;
-        });
+            });
+    };
+    (*run)();
 }
 
 // ---- 프로젝터 창 닫기 (Win32) ----------------------------------
@@ -530,13 +556,85 @@ void ObsProcessManager::assignProcessToJob() {
 #endif
 }
 
+// ---- 프로젝터 창 borderless 처리 (Win32) -----------------------
+// OBS 는 windowed projector 를 항상 타이틀바 있는 창으로 연다. 웨딩홀 LED
+// 세팅에서는 지정 사각형에 픽셀 1:1 매핑이 필요 → WS_POPUP 로 데코레이션을
+// 벗기고 SetWindowPos 로 정확한 좌표·크기에 재배치. 창 자체가 없어지지
+// 않으므로 OBS 는 여전히 이 창을 정상 projector 로 인식하고 렌더한다.
+#ifdef _WIN32
+namespace {
+struct FindProjCtx { DWORD pid; HWND skip; HWND found; };
+BOOL CALLBACK findProjectorEnumProc(HWND h, LPARAM lp) {
+    auto* c = reinterpret_cast<FindProjCtx*>(lp);
+    DWORD wpid = 0;
+    GetWindowThreadProcessId(h, &wpid);
+    if (wpid == c->pid && h != c->skip && IsWindowVisible(h)) {
+        c->found = h;
+        return FALSE;   // 첫 매치에서 종료
+    }
+    return TRUE;
+}
+} // namespace
+#endif
+
+void ObsProcessManager::makeProjectorBorderless() {
+#ifdef _WIN32
+    if (!m_useGeometry) return;
+
+    // 창이 아직 안 떴을 수 있으니 재시도.
+    static constexpr int kMaxTries = 8;
+    auto attempt = std::make_shared<int>(0);
+    auto run = std::make_shared<std::function<void()>>();
+    *run = [this, attempt, run]() {
+        FindProjCtx ctx{ static_cast<DWORD>(m_pid),
+                         reinterpret_cast<HWND>(m_mainHwnd), nullptr };
+        EnumWindows(findProjectorEnumProc, reinterpret_cast<LPARAM>(&ctx));
+        if (!ctx.found) {
+            if (++(*attempt) < kMaxTries)
+                QTimer::singleShot(200, this, [run]() { (*run)(); });
+            else
+                qWarning() << "ObsProcessManager: projector HWND not found "
+                              "to make borderless";
+            return;
+        }
+        // WS_POPUP + 데코레이션 제거 = client area = window area (픽셀 1:1).
+        LONG_PTR style = GetWindowLongPtrW(ctx.found, GWL_STYLE);
+        style &= ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU
+                   | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
+        style |= WS_POPUP;
+        SetWindowLongPtrW(ctx.found, GWL_STYLE, style);
+        // SWP_FRAMECHANGED 로 스타일 변경을 창 프레임에 반영 + 정확한 좌표/크기.
+        SetWindowPos(ctx.found, HWND_TOP,
+                     m_geoX, m_geoY, m_geoW, m_geoH,
+                     SWP_FRAMECHANGED | SWP_NOACTIVATE);
+        qInfo() << "ObsProcessManager: projector borderless at"
+                << m_geoX << "," << m_geoY
+                << "size" << m_geoW << "x" << m_geoH;
+    };
+    (*run)();
+#endif
+}
+
 // ---- 프로젝터 모니터 변경 --------------------------------------
 void ObsProcessManager::setProjectorMonitor(int monitorIndex) {
+    m_useGeometry = false;                       // 풀스크린 모드로 전환
     m_cfg.projectorMonitor = monitorIndex;
     qInfo() << "ObsProcessManager: projector monitor →" << monitorIndex;
     if (m_state != State::Ready || !m_client)
         return;   // 다음 Ready 에서 새 인덱스로 열림
     // 기존 프로젝터를 닫고, 닫힘이 처리될 약간의 여유 후 새 모니터에 재오픈.
+    closeProjectorWindows();
+    QTimer::singleShot(200, this, [this]() { openProgramProjector(); });
+}
+
+// ---- 프로젝터 좌표 지정 (스크린 모드) --------------------------
+void ObsProcessManager::setProjectorGeometry(int x, int y, int w, int h) {
+    m_useGeometry = true;
+    m_geoX = x;  m_geoY = y;  m_geoW = w;  m_geoH = h;
+    qInfo() << "ObsProcessManager: projector geometry →"
+            << QStringLiteral("%1x%2+%3+%4").arg(w).arg(h).arg(x).arg(y);
+    if (m_state != State::Ready || !m_client)
+        return;
     closeProjectorWindows();
     QTimer::singleShot(200, this, [this]() { openProgramProjector(); });
 }

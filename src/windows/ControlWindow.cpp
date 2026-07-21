@@ -644,9 +644,10 @@ void ControlWindow::createMenus() {
     });
 
     auto* toolsMenu  = menuBar()->addMenu(tr("도구(&T)"));
-    auto* monitorAct = toolsMenu->addAction(tr("출력 모니터 선택(&M)..."));
-    connect(monitorAct, &QAction::triggered,
-            this, &ControlWindow::selectOutputMonitorRequested);
+    // 디스플레이 설정 — 캔버스 해상도 + 송출 모니터 통합(웨딩홀 현장 세팅).
+    auto* displayAct = toolsMenu->addAction(tr("디스플레이 설정(&D)..."));
+    connect(displayAct, &QAction::triggered,
+            this, &ControlWindow::displaySettingsRequested);
     auto* playTestAct = toolsMenu->addAction(tr("테스트 영상 재생(&T)..."));
     connect(playTestAct, &QAction::triggered,
             this, &ControlWindow::playTestVideoRequested);
@@ -697,7 +698,7 @@ void ControlWindow::createMenus() {
     toolbar->addAction(saveAct);
     toolbar->addAction(loadAct);
     toolbar->addSeparator();
-    toolbar->addAction(monitorAct);
+    toolbar->addAction(displayAct);
 
     // 우측 stretch — [준비|진행] 세그먼트를 툴바 오른쪽 끝으로 밀어냄.
     auto* spacer = new QWidget(toolbar);
