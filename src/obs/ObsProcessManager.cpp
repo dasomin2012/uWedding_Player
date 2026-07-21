@@ -21,7 +21,30 @@
 namespace uwp {
 
 ObsProcessManager::ObsProcessManager(const ObsConfig& cfg, QObject* parent)
-    : QObject(parent), m_cfg(cfg) {}
+    : QObject(parent), m_cfg(cfg) {
+#ifdef _WIN32
+    // Job Object 를 미리 만든다. KILL_ON_JOB_CLOSE 로 우리 프로세스 exit/crash
+    // 시 OS 가 job 내 모든 자식(= 여기 assign 될 OBS) 를 자동 종료.
+    //   * BreakawayOK = false  → OBS 가 CREATE_BREAKAWAY_FROM_JOB 으로 벗어나기 방지
+    //   * 실패해도 치명적 아님 — 종료 시 우리 destructor 의 kill() 이 폴백.
+    HANDLE h = CreateJobObjectW(nullptr, nullptr);
+    if (h) {
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION eli{};
+        eli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if (!SetInformationJobObject(h, JobObjectExtendedLimitInformation,
+                                     &eli, sizeof(eli))) {
+            qWarning() << "ObsProcessManager: SetInformationJobObject failed"
+                       << "(GetLastError=" << GetLastError() << ")";
+            CloseHandle(h);
+            h = nullptr;
+        }
+    } else {
+        qWarning() << "ObsProcessManager: CreateJobObjectW failed"
+                   << "(GetLastError=" << GetLastError() << ")";
+    }
+    m_jobHandle = h;
+#endif
+}
 
 ObsProcessManager::~ObsProcessManager() {
     // 앱 종료 시 OBS 자식 프로세스를 남기지 않는다.
@@ -36,6 +59,15 @@ ObsProcessManager::~ObsProcessManager() {
         m_proc->kill();
         m_proc->waitForFinished(3000);
     }
+#ifdef _WIN32
+    // Job 핸들 닫기 — 여기까지 도달했으면 이미 OBS 는 위에서 정리됨.
+    // 우리 프로세스가 크래시로 여기 도달 못 하면, OS 가 핸들을 회수하면서
+    // KILL_ON_JOB_CLOSE 로 OBS 를 자동 종료(이 매커니즘의 핵심).
+    if (m_jobHandle) {
+        CloseHandle(reinterpret_cast<HANDLE>(m_jobHandle));
+        m_jobHandle = nullptr;
+    }
+#endif
 }
 
 // ---- 경로 해석 -------------------------------------------------
@@ -163,6 +195,8 @@ void ObsProcessManager::onProcessStarted() {
     m_pid = m_proc->processId();
     qInfo() << "ObsProcessManager: OBS started, pid=" << m_pid
             << "— awaiting obs-websocket";
+    // Job Object 부착 — 우리 프로세스가 어떤 이유로 죽어도 이 OBS 는 OS 가 종료.
+    assignProcessToJob();
     setState(State::WaitingForWebSocket);
 
     if (!m_client) {
@@ -395,6 +429,53 @@ void ObsProcessManager::closeProjectorWindows() {
     EnumWindows(closeProjEnumProc, reinterpret_cast<LPARAM>(&ctx));
     qInfo() << "ObsProcessManager: closed" << ctx.closed
             << "projector window(s) (excluding main)";
+#endif
+}
+
+// ---- Job Object 부착 (Windows) ---------------------------------
+// OBS 가 이 job 에 속하면 우리 프로세스가 죽는 순간(정상/크래시/작업관리자 킬)
+// 커널이 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE 로 자동 청소한다. destructor
+// 실행 여부에 의존하지 않는 것이 핵심 — 크래시 시 OBS 고아 근원 차단.
+void ObsProcessManager::assignProcessToJob() {
+#ifdef _WIN32
+    if (!m_jobHandle || m_pid == 0) return;
+    // 프로세스 종료·assign 만 필요하므로 최소 권한.
+    HANDLE hProc = OpenProcess(
+        PROCESS_TERMINATE | PROCESS_SET_QUOTA, FALSE,
+        static_cast<DWORD>(m_pid));
+    if (!hProc) {
+        qWarning() << "ObsProcessManager: OpenProcess pid=" << m_pid
+                   << "failed (GetLastError=" << GetLastError() << ")";
+        return;
+    }
+    if (!AssignProcessToJobObject(
+            reinterpret_cast<HANDLE>(m_jobHandle), hProc)) {
+        const DWORD err = GetLastError();
+        qWarning() << "ObsProcessManager: AssignProcessToJobObject failed"
+                   << "(GetLastError=" << err << ") — OBS may orphan on crash";
+        // 진단: 우리 프로세스가 이미 다른 job 에 소속돼 nested 가 막힌 상황인지.
+        BOOL parentInJob = FALSE;
+        if (IsProcessInJob(GetCurrentProcess(), nullptr, &parentInJob))
+            qWarning() << "  parent(uWeddingPlayer) inJob=" << bool(parentInJob);
+    } else {
+        // 부착 성공 확인 — IsProcessInJob(pid, ourJob) 로 실제 소속 검증.
+        BOOL inOurJob = FALSE;
+        if (IsProcessInJob(hProc, reinterpret_cast<HANDLE>(m_jobHandle),
+                           &inOurJob) && inOurJob) {
+            qInfo() << "ObsProcessManager: OBS assigned to job "
+                       "(auto-kill on parent exit, verified inJob=true)";
+        } else {
+            qWarning() << "ObsProcessManager: AssignProcessToJobObject "
+                          "returned success but IsProcessInJob=false "
+                          "— job kill may not work";
+        }
+        // 우리 프로세스가 이미 다른 job 에 있는지 로그 (Windows 8+ 는 nested 지원
+        // 이지만 특정 조건에서 KILL_ON_JOB_CLOSE 가 상위 job 에 흡수되는 케이스 존재).
+        BOOL parentInJob = FALSE;
+        if (IsProcessInJob(GetCurrentProcess(), nullptr, &parentInJob))
+            qInfo() << "  parent(uWeddingPlayer) inJob=" << bool(parentInJob);
+    }
+    CloseHandle(hProc);
 #endif
 }
 

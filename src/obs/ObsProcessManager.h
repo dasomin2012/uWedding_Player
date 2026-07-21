@@ -87,6 +87,12 @@ private:
     qint64 m_pid           = 0;
     void* m_mainHwnd       = nullptr;     // 숨긴 OBS 메인창 HWND (프로젝터 식별용)
 
+    // Windows Job Object: KILL_ON_JOB_CLOSE 로 우리 프로세스 종료 시(정상/
+    // 크래시/작업관리자 강제 종료 모두 포함) OBS 를 OS 가 자동 정리.
+    // HANDLE 을 void* 로 보관해 헤더에서 <windows.h> 노출 회피.
+    void* m_jobHandle      = nullptr;
+    void assignProcessToJob();            // #ifdef _WIN32 구현. 실패 시 로그만.
+
     static constexpr int kConnectIntervalMs = 500;
     static constexpr int kConnectTimeoutMs  = 25000;  // priming 포함 넉넉히
     static constexpr int kHeartbeatMs       = 5000;
