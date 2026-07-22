@@ -168,6 +168,8 @@ set(UWP_SOURCES
     resources/themes.qrc
     # UI 아이콘 (Lucide, MIT) — SVG. Qt5::Svg 링크 필요.
     resources/icons.qrc
+    # Windows exe 아이콘 임베드 (Hanmac H 로고).
+    $<$<PLATFORM_ID:Windows>:resources/uWeddingPlayer.rc>
 )
 
 # Phase 1 에서는 console subsystem 으로 빌드하여 qDebug 출력을 보기 쉽게 한다.

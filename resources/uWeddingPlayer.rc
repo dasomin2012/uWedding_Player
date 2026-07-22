@@ -1,0 +1,3 @@
+// Windows 리소스 스크립트 — exe 아이콘 임베드.
+// Hanmac 로고의 H 문자로 만든 애플리케이션 아이콘.
+IDI_ICON1 ICON "icons/app_h.ico"

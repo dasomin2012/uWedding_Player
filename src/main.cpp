@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFont>
+#include <QIcon>
 #include <QMessageBox>
 #include <QMutex>
 #include <QSharedMemory>
@@ -76,6 +77,18 @@ int main(int argc, char* argv[]) {
     QApplication::setApplicationName("uWeddingPlayer");
     QApplication::setOrganizationName("uWedding");
     QApplication::setApplicationVersion("0.2.0");
+
+    // 앱 아이콘 — Hanmac 로고 H 문자. QIcon 이 여러 크기(16~256) 를 자동 선택.
+    // Windows 는 exe embed 된 .ico 를 taskbar/alt-tab 에서 우선 사용하지만,
+    // Qt 창의 상단 타이틀바·시스템 다이얼로그 아이콘은 이 setWindowIcon 값을 사용.
+    {
+        QIcon appIcon;
+        for (int sz : { 16, 24, 32, 48, 64, 128, 256 }) {
+            appIcon.addFile(QStringLiteral(":/icons/app_h_%1.png").arg(sz),
+                            QSize(sz, sz));
+        }
+        QApplication::setWindowIcon(appIcon);
+    }
 
     // 앱 UI 기본 폰트 — Windows 기본 한글 폰트 "맑은 고딕" (Malgun Gothic).
     // 시스템 상주 폰트라 별도 번들 불필요. 미설치 환경(비-Windows/구 XP)에서는
