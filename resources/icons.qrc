@@ -1,0 +1,21 @@
+<!DOCTYPE RCC>
+<!--
+  Qt 리소스 — UI 아이콘 (Lucide, MIT License).
+    :/icons/play.svg       — 재생 (미디어 컨트롤)
+    :/icons/pause.svg      — 일시정지
+    :/icons/maximize-2.svg — 캔버스 꽉 채우기 (선택 레이어)
+    :/icons/trash-2.svg    — 삭제 (레이어)
+
+  stroke 색은 currentColor 대신 #666 로 고정 — 밝은/어두운 테마 모두에서
+  적당히 보이는 중간 회색. 필요 시 테마별 두 세트로 확장 가능.
+
+  https://lucide.dev/  (MIT)
+-->
+<RCC version="1.0">
+    <qresource prefix="/icons">
+        <file alias="play.svg">icons/play.svg</file>
+        <file alias="pause.svg">icons/pause.svg</file>
+        <file alias="maximize.svg">icons/maximize-2.svg</file>
+        <file alias="trash.svg">icons/trash-2.svg</file>
+    </qresource>
+</RCC>

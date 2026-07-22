@@ -38,7 +38,7 @@ if(NOT CMAKE_PREFIX_PATH)
     endif()
 endif()
 
-find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets Svg)
 
 # obs-websocket 클라이언트용 (선택). 없으면 OBS 백엔드가 비활성화됨.
 find_package(Qt5 5.15 QUIET COMPONENTS WebSockets)
@@ -166,6 +166,8 @@ set(UWP_SOURCES
 
     # 외부 QSS 테마 (GTRONICK/QSS, MIT) — AUTORCC 로 자동 컴파일.
     resources/themes.qrc
+    # UI 아이콘 (Lucide, MIT) — SVG. Qt5::Svg 링크 필요.
+    resources/icons.qrc
 )
 
 # Phase 1 에서는 console subsystem 으로 빌드하여 qDebug 출력을 보기 쉽게 한다.
@@ -177,6 +179,7 @@ target_link_libraries(uWeddingPlayer PRIVATE
     Qt5::Core
     Qt5::Gui
     Qt5::Widgets
+    Qt5::Svg
 )
 
 # P4: Windows 크래시 덤프 (MiniDumpWriteDump — dbghelp).

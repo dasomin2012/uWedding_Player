@@ -17,6 +17,7 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QImage>
 #include <QLabel>
 #include <QMenu>
@@ -818,8 +819,8 @@ void ControlWindow::createCentralLayout() {
     m_btnPlayPause->setObjectName("PlayPauseButton");
     m_btnPlayPause->setMinimumHeight(52);
     m_btnPlayPause->setFixedWidth(64);
-    m_btnPlayPause->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
-    m_btnPlayPause->setIconSize(QSize(24, 24));
+    m_btnPlayPause->setIcon(QIcon(QStringLiteral(":/icons/play.svg")));
+    m_btnPlayPause->setIconSize(QSize(20, 20));
     m_btnPlayPause->setToolTip(tr("재생 / 일시정지 (자동 진행 제어)"));
     connect(m_btnPlayPause, &QPushButton::clicked, this,
             [this]{ emit playPauseRequested(); });
@@ -964,11 +965,10 @@ QWidget* ControlWindow::buildPreviewPane() {
             this, &ControlWindow::resetPreviewSim);
 
     // 우측: 캔버스에 꽉 채우기 (선택 레이어 → geometry = 캔버스 전체).
-    //   최대화 창 아이콘(SP_TitleBarMaxButton)이 시각적으로 "꽉 채우기" 의미
-    //   전달에 가장 근접. Windows/Linux 모두 네이티브 스타일 아이콘 제공.
+    //   Lucide maximize-2 (양방향 확장 화살표) — "꽉 채우기" 의미에 가장 근접.
     m_btnFillCanvas = new QPushButton;
     m_btnFillCanvas->setObjectName("PreviewToolBtn");
-    m_btnFillCanvas->setIcon(style()->standardIcon(QStyle::SP_TitleBarMaxButton));
+    m_btnFillCanvas->setIcon(QIcon(QStringLiteral(":/icons/maximize.svg")));
     m_btnFillCanvas->setToolTip(tr("선택된 레이어를 캔버스에 꽉 채우기"));
     m_btnFillCanvas->setEnabled(false);
     connect(m_btnFillCanvas, &QPushButton::clicked, this, [this]{
@@ -981,7 +981,7 @@ QWidget* ControlWindow::buildPreviewPane() {
     // 우측 끝: 선택 레이어 삭제 (플랫폼 네이티브 휴지통 아이콘).
     m_btnDeleteLayer = new QPushButton;
     m_btnDeleteLayer->setObjectName("PreviewToolBtn");
-    m_btnDeleteLayer->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
+    m_btnDeleteLayer->setIcon(QIcon(QStringLiteral(":/icons/trash.svg")));
     m_btnDeleteLayer->setToolTip(tr("선택된 레이어 삭제"));
     m_btnDeleteLayer->setEnabled(false);   // 선택 있을 때만 활성
     connect(m_btnDeleteLayer, &QPushButton::clicked, this, [this]{
@@ -1273,9 +1273,9 @@ void ControlWindow::setBlackoutActive(bool active) {
 // 클러스터의 재생/일시정지 아이콘 반영. 재생중=일시정지(누르면 pause), 그 외=재생.
 void ControlWindow::setPlayPauseState(LiveState s) {
     if (!m_btnPlayPause) return;
-    m_btnPlayPause->setIcon(style()->standardIcon(
-        s == LiveState::Playing ? QStyle::SP_MediaPause
-                                : QStyle::SP_MediaPlay));
+    m_btnPlayPause->setIcon(QIcon(s == LiveState::Playing
+        ? QStringLiteral(":/icons/pause.svg")
+        : QStringLiteral(":/icons/play.svg")));
 }
 
 // LiveMirror: 폴링된 프레임을 우상단 Live 패널에 반영.
