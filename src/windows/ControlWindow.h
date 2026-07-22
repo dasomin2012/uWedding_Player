@@ -113,9 +113,12 @@ private:
     QWidget* buildPreviewPane();            // UI-F: 툴바 + PreviewCanvas
     void applyTheme(const QString& theme);   // "light"|"dark"|"elegantdark"|"aqua"
     void applyTitlebarTheme();               // Win32 DwmSetWindowAttribute — 다크 타이틀바
+    void saveLayoutState();                  // QSplitter geometry → QSettings
+    void restoreLayoutState();               // QSettings → QSplitter geometry (있으면)
 
 protected:
     void showEvent(QShowEvent* event) override;   // show 후 HWND 확보 → 타이틀바 재적용
+    void closeEvent(QCloseEvent* event) override; // 종료 전 레이아웃 상태 저장
 
     Settings*        m_settings   = nullptr;
     SceneModel*      m_scene      = nullptr;
@@ -179,6 +182,7 @@ protected:
     //   도구 → 테마 서브메뉴의 라디오 항목들. applyTheme() 이 checked 상태 동기화.
     QList<QAction*> m_themeActions;
     QString         m_currentTheme = "light";
+    bool            m_layoutRestored = false;   // showEvent 최초 1회 복원 가드
 };
 
 } // namespace uwp

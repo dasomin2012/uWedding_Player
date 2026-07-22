@@ -919,6 +919,7 @@ void ControlWindow::createCentralLayout() {
     auto* programPanel = wrapPanel(bottomStack);
 
     auto* centerCol = new QSplitter(Qt::Vertical);
+    centerCol->setObjectName("SplitCenter");   // QSettings 키
     centerCol->addWidget(previewPanel);
     centerCol->addWidget(programPanel);
     centerCol->setStretchFactor(0, 3);
@@ -983,6 +984,7 @@ void ControlWindow::createCentralLayout() {
     auto* propPanel = wrapPanel(propScroll);
 
     auto* rightCol = new QSplitter(Qt::Vertical);
+    rightCol->setObjectName("SplitRight");
     rightCol->addWidget(livePanel);
     rightCol->addWidget(propPanel);
     rightCol->setStretchFactor(0, 0);
@@ -991,6 +993,7 @@ void ControlWindow::createCentralLayout() {
 
     // OUTER: 3-column horizontal splitter
     auto* outer = new QSplitter(Qt::Horizontal);
+    outer->setObjectName("SplitOuter");
     outer->addWidget(leftPanel);
     outer->addWidget(centerCol);
     outer->addWidget(rightCol);
@@ -1258,6 +1261,40 @@ void ControlWindow::showEvent(QShowEvent* event) {
     QMainWindow::showEvent(event);
     // 생성자 시점의 applyTheme 호출 때는 HWND 미확보 → 여기서 재적용.
     applyTitlebarTheme();
+    // 창이 실제 크기를 가진 후 레이아웃 복원 — 그렇지 않으면 restoreState 가
+    // 잘못된 스케일로 계산될 수 있음. 최초 한 번만.
+    if (!m_layoutRestored) {
+        m_layoutRestored = true;
+        restoreLayoutState();
+    }
+}
+
+void ControlWindow::closeEvent(QCloseEvent* event) {
+    saveLayoutState();
+    QMainWindow::closeEvent(event);
+}
+
+// 레이아웃 상태 저장 — findChildren 로 명명된 QSplitter 전량 스캔.
+// 사용자가 리사이즈한 각 스플리터의 handle 위치를 QSettings 에 saveState().
+void ControlWindow::saveLayoutState() {
+    QSettings qs("Hanmac", "uWeddingPlayer");
+    for (QSplitter* s : findChildren<QSplitter*>()) {
+        const QString name = s->objectName();
+        if (name.isEmpty()) continue;
+        qs.setValue(QStringLiteral("layout/") + name, s->saveState());
+    }
+}
+
+// 복원 — 저장값 있으면 QSplitter::restoreState. 없으면 setSizes 기본값 유지.
+void ControlWindow::restoreLayoutState() {
+    QSettings qs("Hanmac", "uWeddingPlayer");
+    for (QSplitter* s : findChildren<QSplitter*>()) {
+        const QString name = s->objectName();
+        if (name.isEmpty()) continue;
+        const QByteArray state =
+            qs.value(QStringLiteral("layout/") + name).toByteArray();
+        if (!state.isEmpty()) s->restoreState(state);
+    }
 }
 
 void ControlWindow::setStatusText(const QString& text) {
