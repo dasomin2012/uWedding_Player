@@ -176,22 +176,23 @@ QListWidget::item, QListView::item {
 QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {
     background: #ffffff;
     border: 1px solid #d3c8b8;
-    border-radius: 5px;
-    padding: 4px 8px;
+    border-radius: 6px;
+    padding: 5px 9px;
     color: #1c1512;
     min-height: 22px;
     selection-background-color: #8a5a3b;
     selection-color: #ffffff;
 }
 QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
-    border-color: #b98a5e;
+    border: 2px solid #b98a5e;
+    padding: 4px 8px;   /* border 굵기 늘면 padding 1px 줄여 총 크기 유지 */
 }
 QComboBox::drop-down { border: 0; width: 20px; }
 
 QSlider::groove:horizontal {
     background: #e4dbcb;
-    height: 5px;
-    border-radius: 2px;
+    height: 6px;
+    border-radius: 3px;
 }
 QSlider::handle:horizontal {
     background: #8a5a3b;
@@ -201,7 +202,7 @@ QSlider::handle:horizontal {
 }
 QSlider::sub-page:horizontal {
     background: #b98a5e;
-    border-radius: 2px;
+    border-radius: 3px;
 }
 
 QSplitter::handle { background: transparent; }
@@ -209,7 +210,7 @@ QSplitter::handle:horizontal { width: 8px; }
 QSplitter::handle:vertical { height: 8px; }
 
 QMenuBar { background: transparent; padding: 4px; }
-QMenuBar::item { padding: 5px 10px; border-radius: 5px; color: #1c1512; }
+QMenuBar::item { padding: 5px 10px; border-radius: 6px; color: #1c1512; }
 QMenuBar::item:selected { background: #ece0cc; }
 QMenu {
     background: #fdfaf5;
@@ -218,7 +219,7 @@ QMenu {
     border-radius: 8px;
     color: #1c1512;
 }
-QMenu::item { padding: 6px 20px; border-radius: 4px; }
+QMenu::item { padding: 6px 20px; border-radius: 6px; }
 QMenu::item:selected { background: #ece0cc; }
 QMenu::separator { height: 1px; background: #e4dbcb; margin: 4px 6px; }
 
@@ -226,24 +227,25 @@ QStatusBar { background: transparent; color: #8a7d70; }
 QToolBar { background: transparent; border: 0; padding: 3px; spacing: 4px; }
 QToolBar QToolButton {
     padding: 5px 10px;
-    border-radius: 5px;
+    border-radius: 6px;
     background: transparent;
     color: #1c1512;
 }
 QToolBar QToolButton:hover { background: #ece0cc; }
 
-QScrollBar:vertical { background: transparent; width: 10px; margin: 0; }
+/* Slimmer 스크롤바 — 8px, hover 시 브랜드 액센트 색으로 강조. */
+QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }
 QScrollBar::handle:vertical {
     background: #d3c8b8;
-    border-radius: 5px;
+    border-radius: 4px;
     min-height: 30px;
 }
 QScrollBar::handle:vertical:hover { background: #8a5a3b; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QScrollBar:horizontal { background: transparent; height: 10px; margin: 0; }
+QScrollBar:horizontal { background: transparent; height: 8px; margin: 0; }
 QScrollBar::handle:horizontal {
     background: #d3c8b8;
-    border-radius: 5px;
+    border-radius: 4px;
     min-width: 30px;
 }
 QScrollBar::handle:horizontal:hover { background: #8a5a3b; }
@@ -273,7 +275,7 @@ QTabWidget#BottomTabs QTabBar::tab:selected {
 QPushButton#ProgramCollapseBtn {
     background: transparent;
     border: 1px solid #d3c8b8;
-    border-radius: 4px;
+    border-radius: 6px;
     color: #1c1512;
     font-weight: 700;
     padding: 0;
@@ -411,22 +413,23 @@ QListWidget::item, QListView::item {
 QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {
     background: #26211c;
     border: 1px solid #3a322c;
-    border-radius: 5px;
-    padding: 4px 8px;
+    border-radius: 6px;
+    padding: 5px 9px;
     color: #e8ddd0;
     min-height: 22px;
     selection-background-color: #c8a37a;
     selection-color: #14100c;
 }
 QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
-    border-color: #c8a37a;
+    border: 2px solid #c8a37a;
+    padding: 4px 8px;
 }
 QComboBox::drop-down { border: 0; width: 20px; }
 
 QSlider::groove:horizontal {
     background: #2c2620;
-    height: 5px;
-    border-radius: 2px;
+    height: 6px;
+    border-radius: 3px;
 }
 QSlider::handle:horizontal {
     background: #c8a37a;
@@ -436,7 +439,7 @@ QSlider::handle:horizontal {
 }
 QSlider::sub-page:horizontal {
     background: #c8a37a;
-    border-radius: 2px;
+    border-radius: 3px;
 }
 
 QSplitter::handle { background: transparent; }
@@ -444,7 +447,7 @@ QSplitter::handle:horizontal { width: 8px; }
 QSplitter::handle:vertical { height: 8px; }
 
 QMenuBar { background: transparent; padding: 4px; color: #e8ddd0; }
-QMenuBar::item { padding: 5px 10px; border-radius: 5px; }
+QMenuBar::item { padding: 5px 10px; border-radius: 6px; }
 QMenuBar::item:selected { background: #33291f; }
 QMenu {
     background: #1e1a17;
@@ -453,7 +456,7 @@ QMenu {
     border-radius: 8px;
     color: #e8ddd0;
 }
-QMenu::item { padding: 6px 20px; border-radius: 4px; }
+QMenu::item { padding: 6px 20px; border-radius: 6px; }
 QMenu::item:selected { background: #33291f; }
 QMenu::separator { height: 1px; background: #2c2620; margin: 4px 6px; }
 
@@ -461,24 +464,25 @@ QStatusBar { background: transparent; color: #8f857a; }
 QToolBar { background: transparent; border: 0; padding: 3px; spacing: 4px; }
 QToolBar QToolButton {
     padding: 5px 10px;
-    border-radius: 5px;
+    border-radius: 6px;
     background: transparent;
     color: #e8ddd0;
 }
 QToolBar QToolButton:hover { background: #33291f; }
 
-QScrollBar:vertical { background: transparent; width: 10px; margin: 0; }
+/* Slimmer 스크롤바 — 8px, hover 시 브랜드 액센트 색으로 강조. */
+QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }
 QScrollBar::handle:vertical {
     background: #3a322c;
-    border-radius: 5px;
+    border-radius: 4px;
     min-height: 30px;
 }
 QScrollBar::handle:vertical:hover { background: #c8a37a; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QScrollBar:horizontal { background: transparent; height: 10px; margin: 0; }
+QScrollBar:horizontal { background: transparent; height: 8px; margin: 0; }
 QScrollBar::handle:horizontal {
     background: #3a322c;
-    border-radius: 5px;
+    border-radius: 4px;
     min-width: 30px;
 }
 QScrollBar::handle:horizontal:hover { background: #c8a37a; }
@@ -508,7 +512,7 @@ QTabWidget#BottomTabs QTabBar::tab:selected {
 QPushButton#ProgramCollapseBtn {
     background: transparent;
     border: 1px solid #3a322c;
-    border-radius: 4px;
+    border-radius: 6px;
     color: #e8ddd0;
     font-weight: 700;
     padding: 0;
