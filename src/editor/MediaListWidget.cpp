@@ -18,6 +18,7 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPen>
 #include <QPixmap>
 #include <QPushButton>
@@ -51,24 +52,27 @@ protected:
     }
 };
 
-// UI-E: 미디어 타일 델리게이트.
-//  - 카드 = [상단 아이콘 128×72] + [하단 파일명 2줄 랩·중앙정렬].
-//    QStyledItemDelegate 기본 IconMode 페인트는 setUniformItemSizes/QSS
-//    조합에서 파일명이 클리핑되어 보이지 않는 사례가 있어 직접 그린다.
-//  - hover 또는 selected 상태에서 우상단 X 표시.
-//  - X 클릭은 editorEvent 에서 소비하여 드래그·선택 이동 억제 후 콜백 호출.
-//  - MOC 회피 위해 Q_OBJECT/signals 대신 std::function 콜백.
+// 미디어 리스트 델리게이트 (썸네일만, 파일명은 툴팁으로).
+//   한 행 = 한 미디어 = 썸네일 aspect-fill 크롭. 파일명은 delegate 에 그리지
+//   않고 QListWidgetItem::toolTip 으로 마우스 오버 시 표시.
+//   선택 하이라이트가 이미지와 정확히 일치.
+//   hover/selected 시 우상단 X 로 소스 제거.
 class MediaTileDelegate : public QStyledItemDelegate {
 public:
     using RemoveHandler = std::function<void(int row)>;
-    static constexpr int kIconW    = 128;
-    static constexpr int kIconH    = 72;
+    static constexpr int kRowW     = 128;   // 셀 폭 (좌측 미디어 패널의 기본 너비)
+    static constexpr int kRowH     = 72;    // 행 높이
     static constexpr int kPad      = 6;
     static constexpr int kBtnSize  = 20;
     static constexpr int kBtnPad   = 4;
 
     MediaTileDelegate(RemoveHandler onRemove, QObject* parent = nullptr)
         : QStyledItemDelegate(parent), m_onRemove(std::move(onRemove)) {}
+
+    QSize sizeHint(const QStyleOptionViewItem&,
+                   const QModelIndex&) const override {
+        return QSize(kRowW, kRowH);
+    }
 
     void paint(QPainter* p, const QStyleOptionViewItem& opt,
                const QModelIndex& idx) const override {
@@ -93,32 +97,33 @@ public:
             p->drawRoundedRect(r, 6, 6);
         }
 
-        // 아이콘 — 상단 중앙 (실제 픽스맵 크기와 kIconW/H 중 작은 쪽 사용)
+        // 썸네일 — 셀 전체를 aspect-fill 로 채움. 파일명은 툴팁으로만 표시.
         const QIcon icon = idx.data(Qt::DecorationRole).value<QIcon>();
-        const QRect iconRect(r.x() + (r.width() - kIconW) / 2,
-                             r.y() + kPad, kIconW, kIconH);
+        const QRect thumbRect = r.adjusted(2, 2, -2, -2);
         if (!icon.isNull()) {
-            icon.paint(p, iconRect, Qt::AlignCenter, QIcon::Normal);
+            const QSize pxSize = thumbRect.size() * 2;   // HiDPI 여유
+            const QPixmap pm = icon.pixmap(pxSize);
+            if (!pm.isNull()) {
+                p->save();
+                QPainterPath clip;
+                clip.addRoundedRect(thumbRect, 4, 4);
+                p->setClipPath(clip);
+                QPixmap scaled = pm.scaled(
+                    thumbRect.size(), Qt::KeepAspectRatioByExpanding,
+                    Qt::SmoothTransformation);
+                const int sx = (scaled.width()  - thumbRect.width())  / 2;
+                const int sy = (scaled.height() - thumbRect.height()) / 2;
+                p->drawPixmap(thumbRect,
+                              scaled, QRect(sx, sy, thumbRect.width(),
+                                                    thumbRect.height()));
+                p->restore();
+            }
         } else {
-            // 스냅샷 준비 전 placeholder — 얇은 프레임
+            // 스냅샷 준비 전 placeholder — 얇은 프레임.
             p->setPen(QPen(opt.palette.color(QPalette::Mid), 1));
-            p->setBrush(Qt::NoBrush);
-            p->drawRoundedRect(iconRect, 4, 4);
+            p->setBrush(opt.palette.color(QPalette::AlternateBase));
+            p->drawRoundedRect(thumbRect, 4, 4);
         }
-
-        // 파일명 — 하단, 2줄 word-wrap, 중앙 정렬, elide
-        const QRect textRect(r.x() + kPad,
-                             iconRect.bottom() + kPad,
-                             r.width() - kPad * 2,
-                             r.bottom() - iconRect.bottom() - kPad * 2);
-        p->setPen(sel ? opt.palette.color(QPalette::HighlightedText)
-                      : opt.palette.color(QPalette::Text));
-        p->setFont(opt.font);
-        // Qt 는 TextWordWrap 시 자동 두 줄 배치. 텍스트가 넘치면 마지막 줄 elide.
-        const QString text = idx.data(Qt::DisplayRole).toString();
-        QTextOption topt(Qt::AlignHCenter | Qt::AlignTop);
-        topt.setWrapMode(QTextOption::WrapAnywhere);
-        p->drawText(textRect, text, topt);
 
         // 우상단 X — hover 또는 selected
         if (hover || sel) {
@@ -178,39 +183,39 @@ MediaListWidget::MediaListWidget(Settings* settings, SnapshotCache* snapshots,
     btnRow->addWidget(btnFile);
     btnRow->addWidget(btnFolder);
 
-    // UI-E: 타입 탭 (3개 exclusive 버튼) — 전체 / 영상 / 이미지.
-    //  * 문서(PDF/PPT)는 "전체"에서만 보임 — 별도 탭 없음.
+    // 타입 필터 — 영상 / 이미지 두 개 토글. 둘 다 unchecked = 전체 표시,
+    // 하나만 checked = 그 타입만 필터. 좁은 폭에서 "전체" 라벨 잘림 회피 +
+    // 없어도 초기 상태가 곧 "전체" 라 UX 손실 없음.
     auto* tabRow = new QHBoxLayout;
     tabRow->setContentsMargins(0, 0, 0, 0);
     tabRow->setSpacing(4);
     m_typeGroup = new QButtonGroup(this);
-    m_typeGroup->setExclusive(true);
+    m_typeGroup->setExclusive(false);   // 상호 배타 아님 — 각각 독립 토글
     struct TabDef { QString label; int value; };
     const TabDef defs[] = {
-        { tr("전체"),   -1 },
         { tr("영상"),   static_cast<int>(MediaType::Video) },
         { tr("이미지"), static_cast<int>(MediaType::Image) },
     };
     for (const auto& d : defs) {
         auto* b = new QPushButton(d.label);
         b->setCheckable(true);
-        b->setObjectName("MediaTab");     // QSS 훅
-        if (d.value == -1) b->setChecked(true);
+        b->setObjectName("MediaTab");
         tabRow->addWidget(b);
         m_typeGroup->addButton(b, d.value);
     }
     tabRow->addStretch(1);
+    m_typeFilter = -1;   // 초기: 필터 없음 = 전체
 
-    // UI-E: 타일 그리드
+    // 가로 행 리스트 (redesign) — 한 행 = 한 미디어. 셀 폭은 view 전체.
     m_list = new MediaList(this);
-    m_list->setViewMode(QListView::IconMode);
-    m_list->setIconSize(QSize(128, 72));            // 16:9 미리보기
-    m_list->setGridSize(QSize(148, 118));           // 아이콘 + 두 줄 파일명 여유
-    m_list->setResizeMode(QListView::Adjust);       // 컬럼수 자동 재계산
-    m_list->setMovement(QListView::Static);         // 드래그 재배치 금지
-    m_list->setWordWrap(true);                      // 긴 파일명 두 줄 랩
-    m_list->setUniformItemSizes(true);              // 그리드 성능
-    m_list->setSpacing(4);
+    m_list->setViewMode(QListView::ListMode);
+    m_list->setIconSize(QSize(240, 144));            // 델리게이트가 aspect-fill 로 크롭. 원본 해상도 여유롭게.
+    m_list->setResizeMode(QListView::Adjust);
+    m_list->setMovement(QListView::Static);
+    m_list->setWordWrap(true);
+    m_list->setUniformItemSizes(true);
+    m_list->setSpacing(2);
+    m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_list->setDragEnabled(true);
     m_list->setDragDropMode(QAbstractItemView::DragOnly);
     m_list->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -236,10 +241,24 @@ MediaListWidget::MediaListWidget(Settings* settings, SnapshotCache* snapshots,
         connect(m_snapshots, &SnapshotCache::snapshotReady,
                 this, &MediaListWidget::onSnapshotReady);
     }
-    // UI-E: 필터 변경 → 재적용
+    // 필터 토글 — 하나 켜면 다른 하나 자동 꺼짐(상호 배타적 결과). 이미 켜진
+    // 버튼 재클릭 시 해제 → 필터 없음(전체). 초기값 -1 = 전체.
     connect(m_typeGroup,
             QOverload<int>::of(&QButtonGroup::idClicked),
-            this, [this](int id){ m_typeFilter = id; applyFilter(); });
+            this, [this](int id) {
+                auto* clicked = m_typeGroup->button(id);
+                if (!clicked) return;
+                if (clicked->isChecked()) {
+                    // 다른 버튼 자동 해제.
+                    for (auto* b : m_typeGroup->buttons())
+                        if (b != clicked && b->isChecked())
+                            b->setChecked(false);
+                    m_typeFilter = id;
+                } else {
+                    m_typeFilter = -1;   // 재클릭으로 해제 → 전체
+                }
+                applyFilter();
+            });
 
     // 이전 실행에서 기억한 소스 복원 (폴더는 재스캔)
     if (m_settings) m_sources = m_settings->mediaSources();

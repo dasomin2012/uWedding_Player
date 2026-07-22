@@ -758,7 +758,8 @@ void ControlWindow::createMenus() {
 void ControlWindow::createCentralLayout() {
     // ----- 미디어 리스트 -----
     m_mediaList = new MediaListWidget(m_settings, m_snapshots);
-    m_mediaList->setMinimumWidth(200);
+    // "파일 추가" · "폴더 추가" 두 버튼 텍스트가 잘리지 않는 최소 폭.
+    m_mediaList->setMinimumWidth(180);
     // UI-D Phase B: 좌측 컬럼 [페이지] 탭 — 현재 편집 프로그램의 페이지 목록.
     m_pageList = new PageListWidget;
     connect(m_mediaList, &MediaListWidget::mediaActivated,
@@ -921,7 +922,7 @@ void ControlWindow::createCentralLayout() {
     outer->setStretchFactor(0, 0);
     outer->setStretchFactor(1, 1);
     outer->setStretchFactor(2, 0);
-    outer->setSizes({ 260, 940, 340 });
+    outer->setSizes({ 200, 1000, 340 });   // 미디어 라이브러리 컴팩트 + 버튼 텍스트 여유
 
     // ROOT
     auto* central = new QWidget(this);
