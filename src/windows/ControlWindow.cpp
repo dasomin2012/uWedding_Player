@@ -19,6 +19,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QDebug>
 #include <QFile>
 #include <QFrame>
 #include <QGridLayout>
@@ -337,15 +338,6 @@ QTabWidget#BottomTabs QTabBar::tab:selected {
     border-bottom: 2px solid #8a5a3b;
 }
 
-QPushButton#ProgramCollapseBtn {
-    background: transparent;
-    border: 1px solid #d3c8b8;
-    border-radius: 6px;
-    color: #1c1512;
-    font-weight: 700;
-    padding: 0;
-}
-QPushButton#ProgramCollapseBtn:hover { background: #f5ede0; }
 )";
 
 const char* kQssDark = R"(
@@ -632,15 +624,6 @@ QTabWidget#BottomTabs QTabBar::tab:selected {
     border-bottom: 2px solid #c8a37a;
 }
 
-QPushButton#ProgramCollapseBtn {
-    background: transparent;
-    border: 1px solid #3a322c;
-    border-radius: 6px;
-    color: #e8ddd0;
-    font-weight: 700;
-    padding: 0;
-}
-QPushButton#ProgramCollapseBtn:hover { background: #33291f; }
 )";
 
 // ---- 패널 래퍼 헬퍼: 내부 위젯을 둥근 프레임 + 선택적 상단 헤더에 담아 반환 ----
@@ -996,40 +979,72 @@ void ControlWindow::createCentralLayout() {
     // CENTER TOP: Preview (툴바 + 캔버스)
     auto* previewPanel = wrapPanel(buildPreviewPane(), tr("작업 캔버스"));
 
-    // CENTER BOTTOM: 프로그램 리스트(접기 가능) 위에 페이지 리스트 세로 스택.
-    //   프로그램 선택 후 자동으로 접혀 페이지 편집에 세로 공간 최대 확보.
-    //   접힌 상태 헤더에 "프로그램: 이름" 표시 → 컨텍스트 상실 방지.
+    // CENTER BOTTOM: [페이지 섹션] + [프로그램 스트립] 세로 스택 —
+    //   페이지는 CollapsibleSection 으로 감싸 독립 접힘 가능.
+    //   프로그램은 창 하단의 "탭 스트립" 느낌으로 항상 노출 — 별도 타이틀
+    //   라인 없이 카드 옆에 "+ 추가" 버튼이 우측 상단 정렬. 컴팩트/펼침
+    //   전환은 카드 더블클릭.
+    m_pageList->setTitleVisible(false);
+
+    auto* pageSection = new CollapsibleSection(tr("페이지"));
+    pageSection->setObjectName("SecPage");
+    pageSection->setContent(m_pageList);
+    pageSection->setHeaderRight(m_pageList->addButton());
+
+    // bstL 구조: [pageSection] / [프로그램 스트립] — 스페이서 없음.
+    //   페이지와 프로그램이 붙어 있고, programPanel 자체가 sizeHint 만큼만
+    //   센터 컬럼에서 배정받아 아래에도 잉여 없음.
     auto* bottomStack = new QWidget;
     auto* bstL = new QVBoxLayout(bottomStack);
     bstL->setContentsMargins(0, 0, 0, 0);
     bstL->setSpacing(6);
-    bstL->addWidget(m_programList);
-    bstL->addWidget(m_pageList, 1);
+    bstL->addWidget(pageSection, 0);
+    bstL->addWidget(m_programList, 0);
+
     auto* programPanel = wrapPanel(bottomStack);
+    // programPanel sizePolicy Vertical=Maximum → QSplitter 가 sizeHint 이상은
+    //   배정하지 않는다. 하단 잉여 공간이 프로그램 패널에 흡수돼 어색한 빈
+    //   여백으로 남는 현상을 방지 (여유는 preview 가 가져감).
+    programPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
 
     auto* centerCol = new QSplitter(Qt::Vertical);
-    centerCol->setObjectName("SplitCenter");   // QSettings 키
+    centerCol->setObjectName("SplitCenter");
     centerCol->addWidget(previewPanel);
     centerCol->addWidget(programPanel);
-    centerCol->setStretchFactor(0, 3);
-    centerCol->setStretchFactor(1, 1);
-    // 초기: 프로그램 펼침 상태(m_collapsed=false, 234) + 페이지(~200) 합계 여유.
-    // collapseChanged 핸들러가 이후 접힘/펼침에 맞춰 재배분.
-    centerCol->setSizes({ 500, 460 });
+    centerCol->setStretchFactor(0, 1);   // 잉여 세로 공간은 preview 가 흡수
+    centerCol->setStretchFactor(1, 0);   // programPanel 은 자기 sizeHint 만
+    centerCol->setCollapsible(0, false);
+    centerCol->setCollapsible(1, false);
+    centerCol->setSizes({ 700, 260 });   // 초기 힌트 (아래 refreshSplit 이 갱신)
 
-    // 프로그램 리스트 접힘/펼침에 따라 하단 영역 크기 자동 조정 —
-    // 펼침 시 카드 표시로 세로가 늘어나므로 Preview 를 살짝 줄여 페이지가
-    // 잘리지 않게. 접히면 원위치로.
-    connect(m_programList, &ProgramListWidget::collapseChanged,
-            this, [centerCol](bool collapsed) {
-                const auto sizes = centerCol->sizes();
-                const int total = sizes.value(0) + sizes.value(1);
-                //   접힘: 하단 340 (프로그램 96 + 페이지 ~200 + 여백)
-                //   펼침: 하단 480 (프로그램 234 + 페이지 ~200 + 여백)
-                const int bottomTarget = collapsed ? 340 : 480;
-                const int topTarget    = qMax(200, total - bottomTarget);
-                centerCol->setSizes({ topTarget, bottomTarget });
+    // 페이지 접힘/펼침 · 프로그램 컴팩트 토글 → programPanel sizeHint 변화 →
+    //   QSplitter 는 캐시된 위치를 붙잡으므로 명시적 재계산 필요.
+    //   현 total 유지, 프로그램은 sizeHint 만 취해 나머지를 preview 에.
+    auto refreshSplit = [centerCol, programPanel]() {
+        programPanel->updateGeometry();
+        const int total = centerCol->height();
+        if (total <= 0) return;
+        const int prog = qMin(total - 220, programPanel->sizeHint().height());
+        centerCol->setSizes({ total - prog, prog });
+    };
+
+    // 시그널 슬롯에서 동기 실행하면 programPanel->sizeHint() 가 직전 상태
+    // (setFixedHeight / setMaximumHeight 반영 전)을 돌려준다.  Qt 이벤트 루프
+    // 한 번을 태워 layout 재계산이 끝난 뒤 읽도록 QTimer(0) 로 지연.
+    //  + 페이지 접힘 시엔 프로그램 스트립도 함께 숨김 (사용자 요구:
+    //    페이지=편집 컨텍스트, 페이지 접힘 = 하단 전체 최소화).
+    connect(pageSection, &CollapsibleSection::expandedChanged, this,
+            [this, refreshSplit](bool expanded){
+                m_programList->setVisible(expanded);
+                QTimer::singleShot(0, this, [refreshSplit]{ refreshSplit(); });
             });
+    connect(m_programList, &ProgramListWidget::collapseChanged, this,
+            [this, refreshSplit](bool){
+                QTimer::singleShot(0, this, [refreshSplit]{ refreshSplit(); });
+            });
+
+    // 초기 진입 시 위젯이 표시된 후 한 번 실행 → 시작 화면에도 잉여 없음.
+    QTimer::singleShot(0, this, [refreshSplit]{ refreshSplit(); });
 
     // RIGHT: 3-스택 접힘 섹션 [Live · 미디어 속성 · 자막 속성]
     //   자막 편집처럼 특정 작업에 집중할 때, 그 외 섹션을 헤더 한 줄로
@@ -1424,6 +1439,9 @@ void ControlWindow::saveLayoutState() {
     //  미디어/자막 섹션은 selectionChanged 콜백이 매번 재설정하므로 저장 무의미.
     if (auto* live = findChild<CollapsibleSection*>("SecLive"))
         qs.setValue(QStringLiteral("layout/secLiveExpanded"), live->isExpanded());
+    // 페이지 섹션 접힘 상태 저장 (프로그램은 이제 상시 노출 스트립).
+    if (auto* pg = findChild<CollapsibleSection*>("SecPage"))
+        qs.setValue(QStringLiteral("layout/secPageExpanded"), pg->isExpanded());
 }
 
 // 복원 — 저장값 있으면 QSplitter::restoreState. 없으면 setSizes 기본값 유지.
@@ -1445,6 +1463,10 @@ void ControlWindow::restoreLayoutState() {
     if (auto* live = findChild<CollapsibleSection*>("SecLive")) {
         const QVariant v = qs.value(QStringLiteral("layout/secLiveExpanded"));
         if (v.isValid()) live->setExpanded(v.toBool());
+    }
+    if (auto* pg = findChild<CollapsibleSection*>("SecPage")) {
+        const QVariant v = qs.value(QStringLiteral("layout/secPageExpanded"));
+        if (v.isValid()) pg->setExpanded(v.toBool());
     }
 }
 

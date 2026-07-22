@@ -4,8 +4,10 @@
 #include <QString>
 #include <QWidget>
 
+class QLabel;
 class QListWidget;
 class QListWidgetItem;
+class QPushButton;
 
 namespace uwp {
 
@@ -30,6 +32,13 @@ public:
     void setProgram(const Program* program, const QString& dataDir);
     // 현재 편집 중 페이지 하이라이트.
     void setActivePage(const QString& pageId);
+    // 상위 CollapsibleSection 이 이 위젯을 감쌀 때, 섹션 헤더 타이틀과
+    // 내부 "페이지" 라벨이 중복 노출되지 않도록 숨김 제어. 라벨 자체 위치는
+    // 유지 (레이아웃 안정성).
+    void setTitleVisible(bool visible);
+    // "+ 페이지 추가" 버튼 노출 — 상위가 setHeaderRight 로 섹션 헤더에
+    // 재부모하면 내부 topRow 는 사실상 빈 껍데기로 축소된다.
+    QPushButton* addButton() const { return m_btnAdd; }
 
 signals:
     void addRequested();                                 // [+ 페이지 추가]
@@ -46,6 +55,8 @@ private:
     void showContextMenu(const QPoint& pos);
 
     QListWidget* m_list    = nullptr;
+    QLabel*      m_titleLabel = nullptr;   // setTitleVisible 대상
+    QPushButton* m_btnAdd     = nullptr;   // addButton() 반환값
     QString      m_dataDir;
     QString      m_activeId;
 };

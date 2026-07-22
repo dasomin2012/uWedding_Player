@@ -37,6 +37,11 @@ public:
     // 이름·썸네일 외에 endAction/displayTime 도 카드 배지에 쓰이므로 갱신.
     void updateItem(const QString& id, const Program& p,
                     const QString& thumbAbsPath);
+    // 상위 CollapsibleSection 안에 배치될 때 섹션 헤더 타이틀과 내부 라벨이
+    // 중복 노출되지 않도록 숨김 제어. 접힘 상태 컨텍스트 문자열도 함께 사라짐.
+    void setTitleVisible(bool visible);
+    // "+ 추가" 버튼 노출 — 상위가 setHeaderRight 로 섹션 헤더에 재부모 가능.
+    QPushButton* addButton() const { return m_btnAdd; }
 
 signals:
     void addRequested();                              // [+ Add]
@@ -58,7 +63,7 @@ private:
 
     QListWidget* m_list     = nullptr;
     QLabel*      m_title    = nullptr;    // 헤더 텍스트 (접힌 상태 시 이름 포함)
-    QPushButton* m_btnToggle = nullptr;   // ∧ / ∨ 접기 토글
+    QPushButton* m_btnAdd   = nullptr;    // "+ 추가" — addButton() 반환값
     QString      m_dataDir;
     QString      m_activeId;
     QString      m_currentProgramName;    // 접힌 상태 헤더용

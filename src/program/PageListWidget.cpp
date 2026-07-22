@@ -181,6 +181,9 @@ PageListWidget::PageListWidget(QWidget* parent)
     m_list->setMovement(QListView::Static);
     m_list->setIconSize(kThumbSize);
     m_list->setGridSize(kCardSize);
+    // 페이지 카드 한 줄만 노출 — sizeHint 를 카드 높이로 고정해 상위 레이아웃이
+    // 필요 이상 세로를 배정하지 않게 (사용자 목표: 리스트 영역 ~140).
+    m_list->setFixedHeight(140);
     m_list->setSpacing(6);
     m_list->setUniformItemSizes(true);
     m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -198,19 +201,23 @@ PageListWidget::PageListWidget(QWidget* parent)
 
     // 상단 툴바: [페이지 제목]  ─────  [+ 페이지 추가].
     //   프로그램 리스트 헤더와 시각 일관성 (bold 제목 + 우측 액션 버튼).
-    auto* title = new QLabel(tr("페이지"));
-    title->setStyleSheet("font-weight: bold;");
+    //   상위 CollapsibleSection 안에 배치될 때는 setTitleVisible(false) 로 숨김.
+    m_titleLabel = new QLabel(tr("페이지"));
+    m_titleLabel->setStyleSheet("font-weight: bold;");
 
-    auto* btnAdd = new QPushButton(tr("+ 페이지 추가"));
-    btnAdd->setEnabled(false);
-    btnAdd->setObjectName("PageAddButton");
-    connect(btnAdd, &QPushButton::clicked, this, &PageListWidget::addRequested);
+    m_btnAdd = new QPushButton(tr("+ 페이지 추가"));
+    m_btnAdd->setEnabled(false);
+    m_btnAdd->setObjectName("PageAddButton");
+    connect(m_btnAdd, &QPushButton::clicked, this, &PageListWidget::addRequested);
 
+    // topRow 는 상위 CollapsibleSection 이 addButton() 을 헤더로 재부모하면
+    // 타이틀 라벨(hidden) + stretch 만 남아 사실상 사라진다. 재부모 없이
+    // 단독 사용될 때는 기존 [타이틀 · + 페이지 추가] 배치가 그대로 노출.
     auto* topRow = new QHBoxLayout;
     topRow->setContentsMargins(0, 0, 0, 0);
-    topRow->addWidget(title);
+    topRow->addWidget(m_titleLabel);
     topRow->addStretch();
-    topRow->addWidget(btnAdd);
+    topRow->addWidget(m_btnAdd);
 
     auto* lay = new QVBoxLayout(this);
     lay->setContentsMargins(0, 0, 0, 0);
@@ -292,6 +299,10 @@ void PageListWidget::showContextMenu(const QPoint& pos) {
     } else if (chosen == downAct) {
         emit moveDownRequested(id);
     }
+}
+
+void PageListWidget::setTitleVisible(bool visible) {
+    if (m_titleLabel) m_titleLabel->setVisible(visible);
 }
 
 } // namespace uwp

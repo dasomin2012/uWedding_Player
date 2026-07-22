@@ -32,7 +32,7 @@ CollapsibleSection::CollapsibleSection(const QString& title, QWidget* parent)
     m_title->installEventFilter(this);   // 라벨 클릭도 토글
 
     m_headerLayout = new QHBoxLayout;
-    m_headerLayout->setContentsMargins(6, 2, 6, 2);   // 최소 여백 — 접힘 시 헤더 컴팩트
+    m_headerLayout->setContentsMargins(8, 4, 8, 4);   // 헤더 세로 ~40px (버튼 sizeHint 포함)
     m_headerLayout->setSpacing(6);
     m_headerLayout->addWidget(m_toggle);
     m_headerLayout->addWidget(m_title, 0);
@@ -89,7 +89,14 @@ void CollapsibleSection::setExpanded(bool on) {
     m_expanded = on;
     updateArrow();
     if (m_content) m_content->setVisible(on);
-    // 명시적 지오메트리 재계산 — 상위 QScrollArea 안에서 즉시 축소되도록.
+    // 접힘 시 세션의 최대 높이를 헤더 크기로 고정 — 상위 QVBoxLayout 이
+    // 잉여 세로 공간을 이 세션에 배정하지 못하게 막는다(빈 여백 방지).
+    //  펼침 시 상한 해제해 컨텐츠가 자유롭게 성장.
+    if (on) {
+        setMaximumHeight(QWIDGETSIZE_MAX);
+    } else if (m_headerFrame) {
+        setMaximumHeight(m_headerFrame->sizeHint().height());
+    }
     updateGeometry();
     emit expandedChanged(on);
 }

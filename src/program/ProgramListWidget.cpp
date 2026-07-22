@@ -159,26 +159,34 @@ public:
             p->drawRect(iconRect.adjusted(1, 1, -1, -1));
         }
 
-        // 이름 — 썸네일 바로 아래, 단일 라인 elide.
-        //   선택 상태에서는 이름 영역에 앰버 배경 + 검정 텍스트 → 확실히 눈에 띔.
+        // 이름 pill — 컴팩트 모드 pill 과 완전 동일한 크기/스타일/상태색.
+        //   활성(재생중) = 크림슨 + 흰 텍스트
+        //   선택(편집 대상) = 앰버
+        //   hover = 크림
+        //   기본 = 백색 + 브론즈 테두리
         const QString name = idx.data(Qt::DisplayRole).toString();
-        QFontMetrics fm(opt.font);
-        const QRect nameRect(card.x() + kPad,
-                             iconRect.bottom() + kPad,
-                             card.width() - kPad * 2,
-                             fm.height() + 2);
-        if (sel && !active) {
-            p->setPen(Qt::NoPen);
-            p->setBrush(QColor(0xf5, 0x9e, 0x0b));
-            p->drawRoundedRect(nameRect.adjusted(-2, 0, 2, 0), 4, 4);
-        }
-        p->setPen(sel && !active ? QColor(0x1c, 0x15, 0x12)
-                                 : opt.palette.color(QPalette::Text));
+        const QRect pill(card.x() + kPad,
+                         iconRect.bottom() + kPad,
+                         card.width() - kPad * 2,
+                         40);
+        QColor bg      = QColor(0xff, 0xff, 0xff);
+        QColor border  = QColor(0xd3, 0xc8, 0xb8);
+        QColor textCol = QColor(0x1c, 0x15, 0x12);
+        if (active)      { bg = QColor(0xd6, 0x33, 0x24); border = bg; textCol = Qt::white; }
+        else if (sel)    { bg = QColor(0xf5, 0x9e, 0x0b); border = QColor(0xd9, 0x77, 0x06); }
+        else if (hover)  { bg = QColor(0xf5, 0xed, 0xe0); border = QColor(0xb9, 0x8a, 0x5e); }
+        p->setPen(QPen(border, 1));
+        p->setBrush(bg);
+        p->drawRoundedRect(pill, 6, 6);
+
         QFont nameFont = opt.font;
-        nameFont.setBold(active || sel);
+        nameFont.setBold(true);
         p->setFont(nameFont);
-        p->drawText(nameRect, Qt::AlignHCenter | Qt::AlignVCenter,
-                    fm.elidedText(name, Qt::ElideRight, nameRect.width()));
+        p->setPen(textCol);
+        QFontMetrics fm(nameFont);
+        const QRect textRect = pill.adjusted(8, 0, -8, 0);
+        p->drawText(textRect, Qt::AlignCenter,
+                    fm.elidedText(name, Qt::ElideRight, textRect.width()));
 
         // 좌상단 순번 뱃지 — 썸네일 내부 좌상단 (카드 밖으로 안 나감).
         const QRect numRect(iconRect.x() + kBtnPad, iconRect.y() + kBtnPad,
@@ -304,27 +312,15 @@ private:
 ProgramListWidget::ProgramListWidget(QWidget* parent)
     : QWidget(parent)
 {
+    // 타이틀 라인 없이 [카드 리스트 | + 추가] 한 줄 — 창 하단 탭 스트립 느낌.
+    //   m_title 은 setCurrentProgramName / updateHeaderLabel 이 참조하지만
+    //   레이아웃에는 넣지 않는다(비가시 상태 유지).
     m_title = new QLabel(tr("프로그램"));
-    m_title->setStyleSheet("font-weight: bold;");
 
-    // 접기/펼치기 토글 — 접으면 카드 리스트 숨김, 헤더에 프로그램 이름 표시.
-    m_btnToggle = new QPushButton(QStringLiteral("∧"));
-    m_btnToggle->setObjectName("ProgramCollapseBtn");
-    m_btnToggle->setToolTip(tr("접기 / 펼치기"));
-    m_btnToggle->setFixedSize(22, 22);
-    connect(m_btnToggle, &QPushButton::clicked, this,
-            [this]{ setCollapsed(!m_collapsed); });
-
-    auto* btnAdd = new QPushButton(tr("+ 추가"));
-    btnAdd->setToolTip(tr("현재 씬을 프로그램으로 저장"));
-    connect(btnAdd, &QPushButton::clicked, this, &ProgramListWidget::addRequested);
-
-    auto* top = new QHBoxLayout;
-    top->setContentsMargins(0, 0, 0, 0);
-    top->addWidget(m_btnToggle);
-    top->addWidget(m_title);
-    top->addStretch();
-    top->addWidget(btnAdd);
+    // 컴팩트 모드(카드 vs. 이름 pill) 전환은 카드 더블클릭이 담당.
+    m_btnAdd = new QPushButton(tr("+ 추가"));
+    m_btnAdd->setToolTip(tr("현재 씬을 프로그램으로 저장"));
+    connect(m_btnAdd, &QPushButton::clicked, this, &ProgramListWidget::addRequested);
 
     m_list = new QListWidget(this);
     m_list->setViewMode(QListView::IconMode);
@@ -354,10 +350,14 @@ ProgramListWidget::ProgramListWidget(QWidget* parent)
             if (r == QMessageBox::Yes) emit deleteRequested(id);
         }, m_list));
 
-    auto* lay = new QVBoxLayout(this);
+    // [카드 리스트 stretch=1  |  + 추가 (상단 정렬)]
+    //   버튼은 자기 sizeHint 만 취해 스트립 우측 상단에 고정.
+    //   리스트가 setFixedHeight(96/234) 를 통해 스트립 세로 크기 결정.
+    auto* lay = new QHBoxLayout(this);
     lay->setContentsMargins(0, 4, 0, 0);
-    lay->addLayout(top);
-    lay->addWidget(m_list);
+    lay->setSpacing(6);
+    lay->addWidget(m_list, 1);
+    lay->addWidget(m_btnAdd, 0, Qt::AlignTop);
 
     connect(m_list, &QListWidget::itemClicked, this, [this](QListWidgetItem* it) {
         if (!it) return;
@@ -367,19 +367,16 @@ ProgramListWidget::ProgramListWidget(QWidget* parent)
         m_list->viewport()->update();
         emit programSelected(it->data(Qt::UserRole).toString());
     });
-    // UI-C: 더블클릭도 Preview 로드만. Live 송출은 오직 TAKE 버튼으로 (§운영자 요구).
-    connect(m_list, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
-        if (!it) return;
-        for (int i = 0; i < m_list->count(); ++i)
-            m_list->item(i)->setSelected(m_list->item(i) == it);
-        m_list->viewport()->update();
-        emit programSelected(it->data(Qt::UserRole).toString());
-    });
+    // 더블클릭 = 카드/이름-pill 컴팩트 모드 토글. (구 ∧/∨ 헤더 버튼 대체)
+    //  단일클릭이 이미 선택+Preview 로드를 담당하므로 더블클릭에 별도 액션을
+    //  두지 않으면 무의미했던 자리를 회수한다. Live 송출은 여전히 TAKE 전용.
+    connect(m_list, &QListWidget::itemDoubleClicked, this,
+            [this](QListWidgetItem*){ setCollapsed(!m_collapsed); });
     connect(m_list, &QListWidget::customContextMenuRequested,
             this, &ProgramListWidget::showContextMenu);
 
-    // 초기 상태: 펼침 (setCollapsed 와 동일 계산치, 스크롤바 여유 포함).
-    setFixedHeight(234);
+    // 초기 상태: 펼침 (setCollapsed 와 동일 계산치).
+    setFixedHeight(180);
 }
 
 QString ProgramListWidget::currentId() const {
@@ -413,7 +410,7 @@ void ProgramListWidget::setPrograms(const QVector<Program>& programs,
         item->setData(kDisplayTimeRole, p.pages.isEmpty() ? 0
                                                           : p.pages.first().displayTimeSec);
         // 현재 접힘 상태에 맞춰 sizeHint 지정 — setPrograms 가 접힘 중에 불려도 정확.
-        item->setSizeHint(m_collapsed ? QSize(200, 36) : kCardSize);
+        item->setSizeHint(m_collapsed ? QSize(200, 40) : kCardSize);
     }
     setActiveProgram(m_activeId);   // 강조 유지
 }
@@ -492,8 +489,6 @@ void ProgramListWidget::showContextMenu(const QPoint& pos) {
 void ProgramListWidget::setCollapsed(bool collapsed) {
     if (m_collapsed == collapsed) return;
     m_collapsed = collapsed;
-    if (m_btnToggle) m_btnToggle->setText(collapsed ? QStringLiteral("∨")
-                                                    : QStringLiteral("∧"));
     updateHeaderLabel();
 
     if (!m_list) { updateGeometry(); return; }
@@ -501,16 +496,15 @@ void ProgramListWidget::setCollapsed(bool collapsed) {
     if (auto* del = m_list->itemDelegate())
         del->setProperty("collapsedMode", collapsed);
 
-    const QSize cell = collapsed ? QSize(200, 36) : kCardSize;
+    const QSize cell = collapsed ? QSize(200, 40) : kCardSize;
     if (collapsed) {
         m_list->setIconSize(QSize(0, 0));
-        // 헤더(32) + pill(36) + 가로 스크롤바(~18) + 레이아웃 여백 = ~96.
-        // 프로그램이 많아져 스크롤바가 뜰 때도 pill 이 잘리지 않도록.
-        setFixedHeight(96);
+        m_list->setSpacing(2);
+        setFixedHeight(44);
     } else {
         m_list->setIconSize(kThumbSize);
-        // 헤더(32) + 카드(172) + 스크롤바(~18) + 여유 = ~234.
-        setFixedHeight(234);
+        m_list->setSpacing(2);   // 카드 172 를 컨테이너 180 안에 맞춤
+        setFixedHeight(180);
     }
     m_list->setGridSize(cell);
     // gridSize 변경이 기존 items 에 즉시 반영되도록 각 item 의 sizeHint 도 명시.
@@ -527,6 +521,10 @@ void ProgramListWidget::setCurrentProgramName(const QString& name) {
     if (m_currentProgramName == name) return;
     m_currentProgramName = name;
     updateHeaderLabel();
+}
+
+void ProgramListWidget::setTitleVisible(bool visible) {
+    if (m_title) m_title->setVisible(visible);
 }
 
 void ProgramListWidget::updateHeaderLabel() {
