@@ -1275,7 +1275,8 @@ void ControlWindow::closeEvent(QCloseEvent* event) {
 }
 
 // 레이아웃 상태 저장 — findChildren 로 명명된 QSplitter 전량 스캔.
-// 사용자가 리사이즈한 각 스플리터의 handle 위치를 QSettings 에 saveState().
+// 사용자가 리사이즈한 각 스플리터의 handle 위치 + ProgramList 접힘 상태를
+// QSettings 에 저장.
 void ControlWindow::saveLayoutState() {
     QSettings qs("Hanmac", "uWeddingPlayer");
     for (QSplitter* s : findChildren<QSplitter*>()) {
@@ -1283,11 +1284,20 @@ void ControlWindow::saveLayoutState() {
         if (name.isEmpty()) continue;
         qs.setValue(QStringLiteral("layout/") + name, s->saveState());
     }
+    if (m_programList)
+        qs.setValue(QStringLiteral("layout/programsCollapsed"),
+                    m_programList->isCollapsed());
 }
 
 // 복원 — 저장값 있으면 QSplitter::restoreState. 없으면 setSizes 기본값 유지.
+//   접힘 상태를 먼저 반영(centerCol 사이즈 재배분) → 그 위에 QSplitter
+//   restoreState 로 최종 위치 확정 (사용자가 리사이즈한 배치가 우선).
 void ControlWindow::restoreLayoutState() {
     QSettings qs("Hanmac", "uWeddingPlayer");
+    if (m_programList) {
+        const QVariant v = qs.value(QStringLiteral("layout/programsCollapsed"));
+        if (v.isValid()) m_programList->setCollapsed(v.toBool());
+    }
     for (QSplitter* s : findChildren<QSplitter*>()) {
         const QString name = s->objectName();
         if (name.isEmpty()) continue;
