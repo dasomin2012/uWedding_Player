@@ -61,6 +61,17 @@ void installFileLogger() {
 } // namespace
 
 int main(int argc, char* argv[]) {
+    // HiDPI 스케일링 활성화 — 4K/QHD 모니터에서 UI 가 너무 작게 보이는
+    // 문제 해결. QApplication 생성 전에 설정해야 유효.
+    //   * AA_EnableHighDpiScaling: 시스템 DPI 감지 → 위젯 자동 스케일
+    //   * AA_UseHighDpiPixmaps  : QPixmap/QIcon 을 devicePixelRatio 로 렌더
+    //   * PassThrough           : 분수 배율(예: 1.5x) 도 반올림 없이 통과 →
+    //                             150% 스케일 모니터에서 정확 표시
+    QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
+    QApplication::setHighDpiScaleFactorRoundingPolicy(
+        Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
+
     QApplication app(argc, argv);
     QApplication::setApplicationName("uWeddingPlayer");
     QApplication::setOrganizationName("uWedding");
