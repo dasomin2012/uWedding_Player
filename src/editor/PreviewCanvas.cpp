@@ -41,10 +41,10 @@ PreviewCanvas::PreviewCanvas(SceneModel* model, SnapshotCache* snapshots,
     setAcceptDrops(true);
     setFrameShape(QFrame::Box);
     setMinimumSize(360, 200);
-    // MinimalViewportUpdate (Qt 기본) 는 dirty-rect 를 아이템 boundingRect 로
-    // 좁혀 계산 — 텍스트 레이어(투명 배경)가 이동할 때 이전 위치의 텍스트 획이
-    // 남는 회귀. Smart 는 전체 뷰포트를 다시 그림 판단 시 더 견고.
-    setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
+    // MinimalViewportUpdate/Smart 모두 텍스트 레이어(투명 배경) 이동 시 이전
+    // 자리 잔상을 남기는 케이스가 있어 FullViewportUpdate 로 강제 — 매 프레임
+    // 뷰포트 전체 재도색. Preview 캔버스는 편집용이라 CPU 여유 있음.
+    setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
 
     syncCanvasRect();
 
