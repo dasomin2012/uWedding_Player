@@ -6,7 +6,7 @@
 
 namespace uwp {
 
-enum class MediaType { Video, Image, Document, Unknown };
+enum class MediaType { Video, Image, Document, Text, Unknown };
 enum class EndAction { Loop, Stop, Hold, Next, First };
 
 QString   mediaTypeToString(MediaType t);
@@ -28,6 +28,20 @@ struct Layer {
     int       displayTimeSec = 0;          // 0 = Take 까지 무한
     EndAction endAction      = EndAction::Loop;
     QString   name;                        // UI 표시용
+
+    // ---- Text 위젯 전용 필드 (mediaType == Text 일 때만 유효) ----
+    // 참고: CMS_WebServer_MultiTenant/templates/subtitle.html 의 subtitle 위젯
+    // 속성 세트를 참조. 정적 텍스트 우선(마키 스크롤은 v2).
+    QString   text;                        // 표시 문자열 (여러 줄 가능)
+    QString   textColor      = "#ffffff";  // Foreground
+    int       fontSize       = 48;         // pt
+    QString   fontFamily     = "맑은 고딕";
+    int       fontWeight     = 700;        // 400=Regular, 700=Bold
+    int       textAlign      = 1;          // 0=Left, 1=Center, 2=Right
+    int       textVAlign     = 1;          // 0=Top,  1=Center, 2=Bottom
+    QString   bgColor        = "#000000";  // 배경색
+    double    bgOpacity      = 0.0;        // 0.0(투명) ~ 1.0
+    int       padding        = 24;         // px
 };
 
 } // namespace uwp

@@ -9,6 +9,7 @@ QString mediaTypeToString(MediaType t) {
         case MediaType::Video:    return "video";
         case MediaType::Image:    return "image";
         case MediaType::Document: return "document";
+        case MediaType::Text:     return "text";
         default:                  return "unknown";
     }
 }
@@ -18,6 +19,7 @@ MediaType mediaTypeFromString(const QString& s) {
     if (v == "video")    return MediaType::Video;
     if (v == "image")    return MediaType::Image;
     if (v == "document") return MediaType::Document;
+    if (v == "text")     return MediaType::Text;
     return MediaType::Unknown;
 }
 

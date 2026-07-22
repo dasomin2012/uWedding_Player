@@ -22,6 +22,10 @@ public:
 
     // 반환: 새 레이어 id
     QString addLayer(const QString& mediaPath, const QRectF& geometry);
+    // 텍스트 레이어 신규 생성 — 미디어 경로 없이 캔버스에 바로 배치.
+    // geometry 비어있으면 캔버스 중앙 하단(기본 자막 자리)에.
+    QString addTextLayer(const QString& initialText,
+                         const QRectF& geometry = QRectF());
     void    removeLayer(const QString& id);
     void    clear();
 

@@ -90,7 +90,31 @@ LayerItem::Handle LayerItem::hitTest(const QPointF& p) const {
 void LayerItem::paint(QPainter* p, const QStyleOptionGraphicsItem*, QWidget*) {
     const QRectF box(0, 0, m_w, m_h);
 
-    if (!m_pixmap.isNull()) {
+    // Text 레이어: SnapshotCache 없이 QPainter 로 직접 렌더.
+    //   (변수명 L 은 Handle::L 과 충돌 → lay 로.)
+    const Layer* lay = m_model ? m_model->layer(m_id) : nullptr;
+    if (lay && lay->mediaType == MediaType::Text) {
+        // 배경 (bgColor + bgOpacity)
+        QColor bg(lay->bgColor);
+        bg.setAlphaF(qBound(0.0, lay->bgOpacity, 1.0));
+        p->fillRect(box, bg);
+
+        // 텍스트
+        QFont f(lay->fontFamily);
+        f.setPixelSize(qMax(1, lay->fontSize));   // px = 캔버스 좌표계와 1:1
+        f.setWeight(lay->fontWeight >= 700 ? QFont::Bold : QFont::Normal);
+        p->setFont(f);
+        p->setPen(QColor(lay->textColor));
+        const QRectF textRect = box.adjusted(lay->padding, lay->padding,
+                                             -lay->padding, -lay->padding);
+        int flags = Qt::TextWordWrap;
+        flags |= (lay->textAlign   == 0) ? Qt::AlignLeft
+              : (lay->textAlign    == 2) ? Qt::AlignRight  : Qt::AlignHCenter;
+        flags |= (lay->textVAlign  == 0) ? Qt::AlignTop
+              : (lay->textVAlign   == 2) ? Qt::AlignBottom : Qt::AlignVCenter;
+        p->drawText(textRect, flags, lay->text);
+    }
+    else if (!m_pixmap.isNull()) {
         p->setRenderHint(QPainter::SmoothPixmapTransform, true);
         p->drawPixmap(box, m_pixmap, QRectF(m_pixmap.rect()));
     } else {

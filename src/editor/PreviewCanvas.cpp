@@ -41,6 +41,10 @@ PreviewCanvas::PreviewCanvas(SceneModel* model, SnapshotCache* snapshots,
     setAcceptDrops(true);
     setFrameShape(QFrame::Box);
     setMinimumSize(360, 200);
+    // MinimalViewportUpdate (Qt 기본) 는 dirty-rect 를 아이템 boundingRect 로
+    // 좁혀 계산 — 텍스트 레이어(투명 배경)가 이동할 때 이전 위치의 텍스트 획이
+    // 남는 회귀. Smart 는 전체 뷰포트를 다시 그림 판단 시 더 견고.
+    setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
 
     syncCanvasRect();
 
@@ -163,7 +167,8 @@ void PreviewCanvas::onLayerAdded(const QString& id) {
     item->setZValue(l->zIndex);
     m_items.insert(id, item);
 
-    if (m_snapshots) {
+    // Text 레이어는 파일 없음 → SnapshotCache 요청 스킵. paint() 가 QPainter 로 직접 렌더.
+    if (m_snapshots && l->mediaType != MediaType::Text && !l->media.isEmpty()) {
         const QImage c = m_snapshots->cached(l->media);
         if (!c.isNull()) item->setSnapshot(QPixmap::fromImage(c));
         else             m_snapshots->request(l->media);

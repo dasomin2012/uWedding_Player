@@ -841,6 +841,9 @@ void ControlWindow::createCentralLayout() {
                     QRectF((cs.width() - w) / 2.0,
                            (cs.height() - h) / 2.0, w, h));
             });
+    // "+ 텍스트" — 파일 없이 씬에 텍스트 레이어 신규 생성.
+    connect(m_mediaList, &MediaListWidget::addTextLayerRequested,
+            this, [this]{ m_scene->addTextLayer(QString()); });
 
     // ----- Preview 캔버스 -----
     m_canvas = new PreviewCanvas(m_scene, m_snapshots);

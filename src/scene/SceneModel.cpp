@@ -55,6 +55,32 @@ QString SceneModel::addLayer(const QString& mediaPath, const QRectF& geometry) {
     return l.id;
 }
 
+QString SceneModel::addTextLayer(const QString& initialText,
+                                 const QRectF& geometry) {
+    Layer l;
+    l.id        = QString("layer_%1").arg(++m_idSeq, 3, 10, QChar('0'));
+    l.mediaType = MediaType::Text;
+    l.media.clear();                  // 텍스트는 파일 없음
+    // 기본 배치: 캔버스 하단(자막 영역). 사용자 지정 있으면 그걸 우선.
+    if (geometry.isValid() && geometry.width() > 0 && geometry.height() > 0) {
+        l.geometry = geometry;
+    } else {
+        const int w = m_canvas.width();
+        const int h = m_canvas.height();
+        const int boxH = qMax(80, h / 6);      // 캔버스 높이 1/6, 최소 80
+        l.geometry = QRectF(0, h - boxH - h / 20, w, boxH);
+    }
+    l.zIndex    = m_layers.size();   // 맨 위
+    l.opacity   = 1.0;
+    l.name      = tr("텍스트 %1").arg(m_layers.size() + 1);
+    l.text      = initialText.isEmpty() ? tr("텍스트를 입력하세요") : initialText;
+    m_layers.push_back(l);
+    normalizeZ();
+    emit layerAdded(l.id);
+    select(l.id);
+    return l.id;
+}
+
 void SceneModel::removeLayer(const QString& idIn) {
     // 방어적 로컬 복사 필수.
     //  호출자가 참조 세만틱스로 자신의 QString 필드를 넘기는 경우(예:

@@ -26,6 +26,19 @@ QJsonObject SceneSerializer::layerToJson(const Layer& l) {
     o["display_time_sec"] = l.displayTimeSec;
     o["end_action"]       = endActionToString(l.endAction);
     o["name"]             = l.name;
+    // Text 위젯 전용 필드 — mediaType==Text 일 때만 저장 (파일 소음 감소).
+    if (l.mediaType == MediaType::Text) {
+        o["text"]         = l.text;
+        o["text_color"]   = l.textColor;
+        o["font_size"]    = l.fontSize;
+        o["font_family"]  = l.fontFamily;
+        o["font_weight"]  = l.fontWeight;
+        o["text_align"]   = l.textAlign;
+        o["text_valign"]  = l.textVAlign;
+        o["bg_color"]     = l.bgColor;
+        o["bg_opacity"]   = l.bgOpacity;
+        o["padding"]      = l.padding;
+    }
     return o;
 }
 
@@ -44,6 +57,19 @@ Layer SceneSerializer::layerFromJson(const QJsonObject& o) {
     l.displayTimeSec = o.value("display_time_sec").toInt(0);
     l.endAction      = endActionFromString(o.value("end_action").toString());
     l.name           = o.value("name").toString();
+    // Text 위젯 — 필드가 없으면 default 값 유지(하위 호환).
+    if (l.mediaType == MediaType::Text) {
+        l.text        = o.value("text").toString(l.text);
+        l.textColor   = o.value("text_color").toString(l.textColor);
+        l.fontSize    = o.value("font_size").toInt(l.fontSize);
+        l.fontFamily  = o.value("font_family").toString(l.fontFamily);
+        l.fontWeight  = o.value("font_weight").toInt(l.fontWeight);
+        l.textAlign   = o.value("text_align").toInt(l.textAlign);
+        l.textVAlign  = o.value("text_valign").toInt(l.textVAlign);
+        l.bgColor     = o.value("bg_color").toString(l.bgColor);
+        l.bgOpacity   = o.value("bg_opacity").toDouble(l.bgOpacity);
+        l.padding     = o.value("padding").toInt(l.padding);
+    }
     return l;
 }
 
@@ -59,7 +85,9 @@ QVector<Layer> SceneSerializer::layersFromJson(const QJsonArray& arr) {
     out.reserve(arr.size());
     for (const QJsonValue& v : arr) {
         Layer l = layerFromJson(v.toObject());
-        if (l.id.isEmpty() || l.media.isEmpty()) continue;   // 무효 스킵
+        if (l.id.isEmpty()) continue;
+        // Text 레이어는 media 경로 없음 — 무효 판정에서 제외.
+        if (l.mediaType != MediaType::Text && l.media.isEmpty()) continue;
         out.push_back(l);
     }
     return out;

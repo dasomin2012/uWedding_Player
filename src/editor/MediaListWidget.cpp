@@ -178,10 +178,15 @@ MediaListWidget::MediaListWidget(Settings* settings, SnapshotCache* snapshots,
 
     auto* btnFile   = new QPushButton(tr("파일 추가"));
     auto* btnFolder = new QPushButton(tr("폴더 추가"));
+    auto* btnText   = new QPushButton(tr("+ 텍스트"));
+    btnText->setToolTip(tr("씬에 텍스트 레이어 추가 (파일 없이)"));
     auto* btnRow    = new QHBoxLayout;
     btnRow->setContentsMargins(0, 0, 0, 0);
     btnRow->addWidget(btnFile);
     btnRow->addWidget(btnFolder);
+    auto* btnRow2   = new QHBoxLayout;
+    btnRow2->setContentsMargins(0, 0, 0, 0);
+    btnRow2->addWidget(btnText);
 
     // 타입 필터 — 영상 / 이미지 두 개 토글. 둘 다 unchecked = 전체 표시,
     // 하나만 checked = 그 타입만 필터. 좁은 폭에서 "전체" 라벨 잘림 회피 +
@@ -230,11 +235,14 @@ MediaListWidget::MediaListWidget(Settings* settings, SnapshotCache* snapshots,
     lay->setSpacing(6);
     lay->addWidget(title);
     lay->addLayout(btnRow);
+    lay->addLayout(btnRow2);
     lay->addLayout(tabRow);
     lay->addWidget(m_list, 1);
 
     connect(btnFile,   &QPushButton::clicked, this, &MediaListWidget::openFile);
     connect(btnFolder, &QPushButton::clicked, this, &MediaListWidget::openFolder);
+    connect(btnText,   &QPushButton::clicked, this,
+            [this]{ emit addTextLayerRequested(); });
     connect(m_list, &QListWidget::itemDoubleClicked,
             this, &MediaListWidget::onItemDoubleClicked);
     if (m_snapshots) {
