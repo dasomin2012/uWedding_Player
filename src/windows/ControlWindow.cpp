@@ -1,5 +1,10 @@
 #include "ControlWindow.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#include <dwmapi.h>
+#endif
+
 #include "app/Settings.h"
 #include "scene/SceneModel.h"
 #include "editor/PreviewCanvas.h"
@@ -97,9 +102,9 @@ QPushButton#TransButton {
     color: #f5ede0;
     border: 0;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 18px;
     font-weight: 700;
-    padding: 14px 6px;
+    padding: 14px 10px;
     letter-spacing: 0.04em;
 }
 QPushButton#TransButton:hover  { background: #4d423a; }
@@ -334,9 +339,9 @@ QPushButton#TransButton {
     color: #14100c;
     border: 0;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 18px;
     font-weight: 700;
-    padding: 14px 6px;
+    padding: 14px 10px;
     letter-spacing: 0.04em;
 }
 QPushButton#TransButton:hover  { background: #d6b48e; }
@@ -574,9 +579,9 @@ QPushButton#TransButton {
     color: #f5ede0;
     border: 0;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 18px;
     font-weight: 700;
-    padding: 14px 6px;
+    padding: 14px 10px;
     letter-spacing: 0.04em;
 }
 QPushButton#TransButton:hover  { background: #4d423a; }
@@ -623,6 +628,17 @@ ControlWindow::ControlWindow(Settings* settings, SceneModel* scene,
     createMenus();
     createCentralLayout();
     setupStatusBar();                            // UX-1: 도트/엔진/모니터/시계
+
+    // 메뉴바는 기본 숨김 — 웨딩홀 운용 컨텍스트에서 상시 노출은 시각적 노이즈.
+    // F10 로 토글 (Windows 관행). 도구 → 디스플레이 등 자주 쓰는 항목은
+    // 상단 툴바에도 있으므로 메뉴 숨겨도 접근성 문제 없음.
+    menuBar()->hide();
+    auto* toggleMenu = new QAction(this);
+    toggleMenu->setShortcut(QKeySequence(Qt::Key_F10));
+    connect(toggleMenu, &QAction::triggered, this, [this]{
+        menuBar()->setVisible(!menuBar()->isVisible());
+    });
+    addAction(toggleMenu);
 
     // UI-B: 저장된 테마 로드 후 적용.
     QSettings qs("Hanmac", "uWeddingPlayer");
@@ -803,7 +819,7 @@ void ControlWindow::createCentralLayout() {
     m_btnTransition = new QPushButton;
     m_btnTransition->setObjectName("TransButton");
     m_btnTransition->setMinimumHeight(52);
-    m_btnTransition->setFixedWidth(64);   // 컴팩트 — TAKE 에 폭 양보
+    m_btnTransition->setFixedWidth(90);   // TAKE 폰트 크기와 균형 — 폭 여유
     {
         const QString dm = m_settings ? m_settings->takeDefaultMode().toLower()
                                       : QString("fade");
@@ -886,6 +902,7 @@ void ControlWindow::createCentralLayout() {
         m_btnLivePower = new QPushButton(tr("ON"));
         m_btnLivePower->setObjectName("LivePowerButton");
         m_btnLivePower->setCheckable(true);
+        m_btnLivePower->setMinimumWidth(64);   // ON/OFF 라벨 여유 폭
         m_btnLivePower->setToolTip(
             tr("프로젝터 화면 표시 ON/OFF — OFF 는 응급 검정 마스크"));
         connect(m_btnLivePower, &QPushButton::clicked,
@@ -905,6 +922,12 @@ void ControlWindow::createCentralLayout() {
     propScroll->setFrameShape(QFrame::NoFrame);
     propScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     propScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    // 배경을 부모 패널(QFrame#Panel) 색과 동기화 — 기본 QScrollArea·viewport
+    // 배경이 시스템 팔레트에 따라 어긋나 보이는 문제 회피.
+    propScroll->setStyleSheet(QStringLiteral(
+        "QScrollArea, QScrollArea > QWidget > QWidget "
+        "{ background: transparent; }"));
+    m_property->setAutoFillBackground(false);
     auto* propPanel = wrapPanel(propScroll);
 
     auto* rightCol = new QSplitter(Qt::Vertical);
@@ -1160,6 +1183,29 @@ void ControlWindow::applyTheme(const QString& theme) {
     for (QAction* a : m_themeActions) {
         if (a) a->setChecked(a->data().toString() == m_currentTheme);
     }
+    // 타이틀바 색 — HWND 가 있어야 적용됨. 없으면 showEvent 에서 재적용.
+    applyTitlebarTheme();
+}
+
+// Windows 11 타이틀바 다크모드. HWND 필요 → 창이 show 된 이후여야 확실히 반영.
+void ControlWindow::applyTitlebarTheme() {
+#ifdef _WIN32
+    HWND hwnd = reinterpret_cast<HWND>(winId());
+    if (!hwnd) return;
+    const BOOL useDark = (m_currentTheme == QLatin1String("dark")
+                       || m_currentTheme == QLatin1String("elegantdark"))
+                        ? TRUE : FALSE;
+    // Windows 10 20H1+ = 20, 초기 인사이더 빌드 = 19. 둘 다 시도.
+    DwmSetWindowAttribute(hwnd, 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/,
+                          &useDark, sizeof(useDark));
+    DwmSetWindowAttribute(hwnd, 19, &useDark, sizeof(useDark));
+#endif
+}
+
+void ControlWindow::showEvent(QShowEvent* event) {
+    QMainWindow::showEvent(event);
+    // 생성자 시점의 applyTheme 호출 때는 HWND 미확보 → 여기서 재적용.
+    applyTitlebarTheme();
 }
 
 void ControlWindow::setStatusText(const QString& text) {

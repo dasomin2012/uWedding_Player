@@ -182,9 +182,10 @@ target_link_libraries(uWeddingPlayer PRIVATE
     Qt5::Svg
 )
 
-# P4: Windows 크래시 덤프 (MiniDumpWriteDump — dbghelp).
+# P4: Windows 크래시 덤프 (MiniDumpWriteDump — dbghelp) +
+# 타이틀바 다크모드 (DwmSetWindowAttribute — dwmapi).
 if(WIN32)
-    target_link_libraries(uWeddingPlayer PRIVATE dbghelp)
+    target_link_libraries(uWeddingPlayer PRIVATE dbghelp dwmapi)
 endif()
 
 if(UWP_HAS_VLC)

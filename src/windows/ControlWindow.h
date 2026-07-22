@@ -112,6 +112,10 @@ private:
     QWidget* buildLivePanel();              // Live mirror + TAKE 클러스터
     QWidget* buildPreviewPane();            // UI-F: 툴바 + PreviewCanvas
     void applyTheme(const QString& theme);   // "light"|"dark"|"elegantdark"|"aqua"
+    void applyTitlebarTheme();               // Win32 DwmSetWindowAttribute — 다크 타이틀바
+
+protected:
+    void showEvent(QShowEvent* event) override;   // show 후 HWND 확보 → 타이틀바 재적용
 
     Settings*        m_settings   = nullptr;
     SceneModel*      m_scene      = nullptr;
