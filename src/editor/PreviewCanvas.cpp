@@ -41,9 +41,10 @@ PreviewCanvas::PreviewCanvas(SceneModel* model, SnapshotCache* snapshots,
     setAcceptDrops(true);
     setFrameShape(QFrame::Box);
     setMinimumSize(360, 200);
-    // MinimalViewportUpdate/Smart 모두 텍스트 레이어(투명 배경) 이동 시 이전
-    // 자리 잔상을 남기는 케이스가 있어 FullViewportUpdate 로 강제 — 매 프레임
-    // 뷰포트 전체 재도색. Preview 캔버스는 편집용이라 CPU 여유 있음.
+    // 우리 LayerItem 은 boundingRect 에 8-핸들 마진을 포함하고 selection
+    // 상태에 따라 painted 영역이 변한다. Qt 의 dirty-rect 최적화(Minimal/Smart)
+    // 는 이런 케이스에서 이전 프레임 픽셀을 남기는 회귀가 관찰됨. 편집용
+    // 캔버스라 CPU 여유가 있어 FullViewportUpdate 로 안전 우선.
     setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
 
     syncCanvasRect();

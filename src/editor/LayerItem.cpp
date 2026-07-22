@@ -215,6 +215,33 @@ void LayerItem::mouseMoveEvent(QGraphicsSceneMouseEvent* e) {
         if (r.height() < 8) r.setHeight(8);
     }
 
+    // 캔버스 밖 이동/리사이즈 제한 — 마그네틱처럼 넘어가면 가장자리에 붙임.
+    //   Move (Body):  좌우/상하 밖으로 나가지 않게 위치만 clamp (크기 유지).
+    //   Resize edges: 넘어간 변만 캔버스 경계로 스냅 (반대 변은 유지).
+    if (m_model) {
+        const QSize cs = m_model->canvasSize();
+        const qreal cw = cs.width();
+        const qreal ch = cs.height();
+        if (m_drag == Body) {
+            // 위치 clamp: 레이어가 캔버스보다 크면 왼쪽/위 정렬.
+            qreal x = r.x(), y = r.y();
+            if (r.width()  <= cw) x = qBound<qreal>(0.0, x, cw - r.width());
+            else                  x = 0.0;
+            if (r.height() <= ch) y = qBound<qreal>(0.0, y, ch - r.height());
+            else                  y = 0.0;
+            r.moveTo(x, y);
+        } else {
+            // 리사이즈: 넘어간 변만 클램프.
+            const qreal L = qMax<qreal>(0.0, r.left());
+            const qreal T = qMax<qreal>(0.0, r.top());
+            const qreal R = qMin<qreal>(cw, r.right());
+            const qreal B = qMin<qreal>(ch, r.bottom());
+            r = QRectF(QPointF(L, T), QPointF(R, B));
+            if (r.width()  < 8) r.setWidth(8);
+            if (r.height() < 8) r.setHeight(8);
+        }
+    }
+
     prepareGeometryChange();
     m_w = r.width();
     m_h = r.height();
