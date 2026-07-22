@@ -189,6 +189,9 @@ void PreviewCanvas::onLayerChanged(const QString& id) {
     if (!it || !l) return;
     it->applyGeometry(l->geometry);
     it->applyOpacity(l->opacity);
+    // Text 필드(내용·글꼴·색·정렬 등)는 paint() 가 매번 모델을 다시 읽으므로
+    // geometry/opacity 변화가 없어도 명시적 update() 로 리페인트 트리거.
+    if (l->mediaType == MediaType::Text) it->update();
 }
 
 void PreviewCanvas::onZOrderChanged() {

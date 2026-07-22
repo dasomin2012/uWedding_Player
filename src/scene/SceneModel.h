@@ -39,6 +39,19 @@ public:
     void setEndAction(const QString& id, EndAction a);
     void setName(const QString& id, const QString& name);
 
+    // 텍스트 위젯 전용 필드 (mediaType == Text 일 때만 의미).
+    // 각 setter 는 값이 실제로 바뀌었을 때만 layerChanged emit → 불필요 리페인트 방지.
+    void setText(const QString& id, const QString& text);
+    void setTextColor(const QString& id, const QString& color);
+    void setFontSize(const QString& id, int px);
+    void setFontFamily(const QString& id, const QString& family);
+    void setFontWeight(const QString& id, int weight);
+    void setTextAlign(const QString& id, int align);      // 0=Left, 1=Center, 2=Right
+    void setTextVAlign(const QString& id, int align);     // 0=Top,  1=Center, 2=Bottom
+    void setBgColor(const QString& id, const QString& color);
+    void setBgOpacity(const QString& id, double op);      // 0.0~1.0
+    void setPadding(const QString& id, int px);
+
     // z-order (정렬 + 연속 zIndex 재배치)
     void raise(const QString& id);
     void lower(const QString& id);

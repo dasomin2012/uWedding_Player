@@ -156,6 +156,89 @@ void SceneModel::setName(const QString& id, const QString& name) {
     emit layerChanged(id);
 }
 
+// ---- Text 위젯 setter --------------------------------------------
+//  값 비교 후 실제 변경일 때만 emit — PropertyPanel 이 다중 필드를 갱신할 때
+//  onLayerChanged 콜백이 자기 자신을 loadFrom 으로 되돌리는 루프를 최소화.
+void SceneModel::setText(const QString& id, const QString& text) {
+    const int i = indexOf(id);
+    if (i < 0 || m_layers[i].text == text) return;
+    m_layers[i].text = text;
+    emit layerChanged(id);
+}
+
+void SceneModel::setTextColor(const QString& id, const QString& color) {
+    const int i = indexOf(id);
+    if (i < 0 || m_layers[i].textColor == color) return;
+    m_layers[i].textColor = color;
+    emit layerChanged(id);
+}
+
+void SceneModel::setFontSize(const QString& id, int px) {
+    const int i = indexOf(id);
+    if (i < 0) return;
+    px = qMax(1, px);
+    if (m_layers[i].fontSize == px) return;
+    m_layers[i].fontSize = px;
+    emit layerChanged(id);
+}
+
+void SceneModel::setFontFamily(const QString& id, const QString& family) {
+    const int i = indexOf(id);
+    if (i < 0 || m_layers[i].fontFamily == family) return;
+    m_layers[i].fontFamily = family;
+    emit layerChanged(id);
+}
+
+void SceneModel::setFontWeight(const QString& id, int weight) {
+    const int i = indexOf(id);
+    if (i < 0 || m_layers[i].fontWeight == weight) return;
+    m_layers[i].fontWeight = weight;
+    emit layerChanged(id);
+}
+
+void SceneModel::setTextAlign(const QString& id, int align) {
+    const int i = indexOf(id);
+    if (i < 0) return;
+    align = qBound(0, align, 2);
+    if (m_layers[i].textAlign == align) return;
+    m_layers[i].textAlign = align;
+    emit layerChanged(id);
+}
+
+void SceneModel::setTextVAlign(const QString& id, int align) {
+    const int i = indexOf(id);
+    if (i < 0) return;
+    align = qBound(0, align, 2);
+    if (m_layers[i].textVAlign == align) return;
+    m_layers[i].textVAlign = align;
+    emit layerChanged(id);
+}
+
+void SceneModel::setBgColor(const QString& id, const QString& color) {
+    const int i = indexOf(id);
+    if (i < 0 || m_layers[i].bgColor == color) return;
+    m_layers[i].bgColor = color;
+    emit layerChanged(id);
+}
+
+void SceneModel::setBgOpacity(const QString& id, double op) {
+    const int i = indexOf(id);
+    if (i < 0) return;
+    op = qBound(0.0, op, 1.0);
+    if (qFuzzyCompare(m_layers[i].bgOpacity, op)) return;
+    m_layers[i].bgOpacity = op;
+    emit layerChanged(id);
+}
+
+void SceneModel::setPadding(const QString& id, int px) {
+    const int i = indexOf(id);
+    if (i < 0) return;
+    px = qMax(0, px);
+    if (m_layers[i].padding == px) return;
+    m_layers[i].padding = px;
+    emit layerChanged(id);
+}
+
 void SceneModel::raise(const QString& id) {
     const int i = indexOf(id);
     if (i < 0 || i + 1 >= m_layers.size()) return;

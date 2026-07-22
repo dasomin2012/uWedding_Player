@@ -7,6 +7,7 @@
 
 #include "app/Settings.h"
 #include "scene/SceneModel.h"
+#include "editor/CollapsibleSection.h"
 #include "editor/PreviewCanvas.h"
 #include "editor/PropertyPanel.h"
 #include "editor/MediaListWidget.h"
@@ -98,6 +99,39 @@ QLabel#PanelHeader {
     padding: 2px 2px 8px 2px;
     border-bottom: 1px solid #ece4d6;
     margin-bottom: 6px;
+}
+QFrame#CollapsibleSection {
+    background: #fdfaf5;
+    border: 1px solid #dcd3c6;
+    border-radius: 10px;
+}
+QFrame#CollapsibleHeader {
+    background: transparent;
+    border-bottom: 1px solid #ece4d6;
+}
+QLabel#CollapsibleTitle {
+    color: #6a5f54;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+QPushButton#CollapsibleToggle {
+    background: transparent;
+    border: none;
+    color: #6a5f54;
+    font-size: 11px;
+    padding: 0;
+}
+QPushButton#CollapsibleToggle:hover { background: rgba(0,0,0,0.06); border-radius: 4px; }
+/* Live 섹션 헤더의 ON/OFF 는 접힘 시에도 노출되므로 컴팩트. */
+QFrame#CollapsibleHeader QPushButton#LivePowerButton {
+    padding: 3px 10px;
+    min-height: 0;
+    font-size: 11px;
+}
+QFrame#CollapsibleHeader QLabel#LiveStatusLabel {
+    padding: 0 4px;
 }
 QPushButton {
     background: #ffffff;
@@ -361,6 +395,38 @@ QLabel#PanelHeader {
     padding: 2px 2px 8px 2px;
     border-bottom: 1px solid #2c2620;
     margin-bottom: 6px;
+}
+QFrame#CollapsibleSection {
+    background: #1e1a17;
+    border: 1px solid #2c2620;
+    border-radius: 10px;
+}
+QFrame#CollapsibleHeader {
+    background: transparent;
+    border-bottom: 1px solid #2c2620;
+}
+QLabel#CollapsibleTitle {
+    color: #b7ac9b;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+QPushButton#CollapsibleToggle {
+    background: transparent;
+    border: none;
+    color: #b7ac9b;
+    font-size: 11px;
+    padding: 0;
+}
+QPushButton#CollapsibleToggle:hover { background: rgba(255,255,255,0.08); border-radius: 4px; }
+QFrame#CollapsibleHeader QPushButton#LivePowerButton {
+    padding: 3px 10px;
+    min-height: 0;
+    font-size: 11px;
+}
+QFrame#CollapsibleHeader QLabel#LiveStatusLabel {
+    padding: 0 4px;
 }
 QPushButton {
     background: #26211c;
@@ -656,6 +722,25 @@ QPushButton#LivePowerButton:checked {
     color: #ffffff;
     border-color: #000000;
 }
+
+/* CollapsibleSection 헤더 안에서는 컴팩트 — 접힘 상태에서 헤더가
+   여전히 두꺼우면 사용자는 "안 접혔다"고 느낀다. 더 구체적인 셀렉터로
+   위의 큰 padding 을 덮어쓴다. */
+QFrame#CollapsibleHeader QPushButton#LivePowerButton {
+    padding: 3px 10px;
+    min-height: 0;
+    font-size: 11px;
+}
+QFrame#CollapsibleHeader QLabel#LiveStatusLabel {
+    padding: 0 4px;
+}
+QPushButton#CollapsibleToggle {
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-size: 11px;
+}
+QPushButton#CollapsibleToggle:hover { background: rgba(128,128,128,0.15); border-radius: 4px; }
 )";
 
 QString loadQssFromResource(const QString& path) {
@@ -946,54 +1031,84 @@ void ControlWindow::createCentralLayout() {
                 centerCol->setSizes({ topTarget, bottomTarget });
             });
 
-    // RIGHT TOP: Live 헤더 — 상태 라벨 + 화면 마스크 ON/OFF 토글.
-    //   상태 라벨: 재생중(녹) / 일시정지(주황) / 대기(회) 3-state.
-    //   ON/OFF: 프로젝터 화면을 검정으로 마스크 (구 BLACK 응급 기능).
-    auto* liveHeader = new QWidget;
+    // RIGHT: 3-스택 접힘 섹션 [Live · 미디어 속성 · 자막 속성]
+    //   자막 편집처럼 특정 작업에 집중할 때, 그 외 섹션을 헤더 한 줄로
+    //   접어 시각적 노이즈와 세로 공간을 줄인다. 접힘 상태 유지는 사용자
+    //   조작을 우선으로 하되, 선택 레이어 타입에 따라 자동 힌트도 제공.
+    //
+    //   Live 헤더 우측: 상태 라벨(3-state) + ON/OFF 마스크 버튼.
+    //     접혔을 때도 반드시 보이도록 헤더 슬롯에 배치.
+    m_liveStatus = new QLabel;
+    m_liveStatus->setObjectName("LiveStatusLabel");
+    m_btnLivePower = new QPushButton(tr("ON"));
+    m_btnLivePower->setObjectName("LivePowerButton");
+    m_btnLivePower->setCheckable(true);
+    m_btnLivePower->setMinimumWidth(64);
+    m_btnLivePower->setToolTip(
+        tr("프로젝터 화면 표시 ON/OFF — OFF 는 응급 검정 마스크"));
+    connect(m_btnLivePower, &QPushButton::clicked,
+            this, &ControlWindow::blackoutRequested);
+    auto* liveHeaderRight = new QWidget;
     {
-        auto* hh = new QHBoxLayout(liveHeader);
+        auto* hh = new QHBoxLayout(liveHeaderRight);
         hh->setContentsMargins(0, 0, 0, 0);
         hh->setSpacing(8);
-        m_liveStatus = new QLabel;
-        m_liveStatus->setObjectName("LiveStatusLabel");
-        m_btnLivePower = new QPushButton(tr("ON"));
-        m_btnLivePower->setObjectName("LivePowerButton");
-        m_btnLivePower->setCheckable(true);
-        m_btnLivePower->setMinimumWidth(64);   // ON/OFF 라벨 여유 폭
-        m_btnLivePower->setToolTip(
-            tr("프로젝터 화면 표시 ON/OFF — OFF 는 응급 검정 마스크"));
-        connect(m_btnLivePower, &QPushButton::clicked,
-                this, &ControlWindow::blackoutRequested);
-        hh->addWidget(m_liveStatus, 1);
+        hh->addWidget(m_liveStatus);
         hh->addWidget(m_btnLivePower);
     }
-    auto* livePanel = wrapPanelWithHeader(buildLivePanel(), liveHeader);
-    setLiveState(LiveState::Idle);    // 초기 라벨/아이콘 통일
-    setLivePowerOff(false);           // 초기 ON
 
-    // RIGHT BOTTOM: Property (자체 헤더 있음). 세로 공간이 부족할 때 하단
-    // 버튼(레이어 삭제 등)이 잘리지 않도록 QScrollArea 로 감싸 스크롤 확보.
-    auto* propScroll = new QScrollArea;
-    propScroll->setWidget(m_property);
-    propScroll->setWidgetResizable(true);
-    propScroll->setFrameShape(QFrame::NoFrame);
-    propScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    propScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    // 배경을 부모 패널(QFrame#Panel) 색과 동기화 — 기본 QScrollArea·viewport
-    // 배경이 시스템 팔레트에 따라 어긋나 보이는 문제 회피.
-    propScroll->setStyleSheet(QStringLiteral(
+    auto* liveSection = new CollapsibleSection(tr("Live 송출"));
+    liveSection->setObjectName("SecLive");
+    liveSection->setContent(buildLivePanel());
+    liveSection->setHeaderRight(liveHeaderRight);
+    setLiveState(LiveState::Idle);
+    setLivePowerOff(false);
+
+    auto* mediaSection = new CollapsibleSection(tr("미디어 속성"));
+    mediaSection->setObjectName("SecMedia");
+    mediaSection->setContent(m_property);
+
+    auto* textSection = new CollapsibleSection(tr("자막 속성"));
+    textSection->setObjectName("SecText");
+    textSection->setContent(m_property->textContent());
+    textSection->setExpanded(false);   // 초기엔 접힘 — 텍스트 선택 시 자동 펼침
+
+    // 우측 컬럼 컨테이너 — QScrollArea 로 감싸 세로 공간이 부족할 때 스크롤.
+    auto* rightBox = new QWidget;
+    auto* rbL = new QVBoxLayout(rightBox);
+    rbL->setContentsMargins(6, 6, 6, 6);
+    rbL->setSpacing(6);
+    rbL->addWidget(liveSection);
+    rbL->addWidget(mediaSection);
+    rbL->addWidget(textSection);
+    rbL->addStretch(1);   // 모두 접혔을 때 헤더가 위쪽에 몰리도록.
+
+    auto* rightScroll = new QScrollArea;
+    rightScroll->setWidget(rightBox);
+    rightScroll->setWidgetResizable(true);
+    rightScroll->setFrameShape(QFrame::NoFrame);
+    rightScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    rightScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    rightScroll->setStyleSheet(QStringLiteral(
         "QScrollArea, QScrollArea > QWidget > QWidget "
         "{ background: transparent; }"));
     m_property->setAutoFillBackground(false);
-    auto* propPanel = wrapPanel(propScroll);
+    if (auto* tc = m_property->textContent()) tc->setAutoFillBackground(false);
 
-    auto* rightCol = new QSplitter(Qt::Vertical);
-    rightCol->setObjectName("SplitRight");
-    rightCol->addWidget(livePanel);
-    rightCol->addWidget(propPanel);
-    rightCol->setStretchFactor(0, 0);
-    rightCol->setStretchFactor(1, 1);
-    rightCol->setSizes({ 340, 500 });
+    // rightCol 자리에 들어갈 최종 위젯 — 아래 outer 3-column splitter 가 참조.
+    auto* rightCol = rightScroll;
+
+    // 자동 접힘 힌트: 선택 레이어가 텍스트면 자막 섹션만 펼침, 그 외엔
+    // 미디어 섹션만 펼침. Live 는 항상 사용자 결정을 존중.
+    //   현재는 단순 규칙 — 사용자가 명시적으로 조작한 상태를 오래 유지하려면
+    //   섹션별 "수동 조작 플래그" 도입이 필요하지만, 우선 명료성을 우선.
+    connect(m_scene, &SceneModel::selectionChanged, this,
+            [this, mediaSection, textSection](const QString& id) {
+                if (id.isEmpty()) return;   // 선택 해제 시엔 유지
+                const bool isText = m_property && m_property->isTextLayerSelected();
+                mediaSection->setExpanded(!isText);
+                textSection->setExpanded(isText);
+            });
 
     // OUTER: 3-column horizontal splitter
     auto* outer = new QSplitter(Qt::Horizontal);
@@ -1305,6 +1420,10 @@ void ControlWindow::saveLayoutState() {
     if (m_programList)
         qs.setValue(QStringLiteral("layout/programsCollapsed"),
                     m_programList->isCollapsed());
+    // 우측 컬럼 접힘 상태 — Live 만 저장(사용자 수동 결정).
+    //  미디어/자막 섹션은 selectionChanged 콜백이 매번 재설정하므로 저장 무의미.
+    if (auto* live = findChild<CollapsibleSection*>("SecLive"))
+        qs.setValue(QStringLiteral("layout/secLiveExpanded"), live->isExpanded());
 }
 
 // 복원 — 저장값 있으면 QSplitter::restoreState. 없으면 setSizes 기본값 유지.
@@ -1322,6 +1441,10 @@ void ControlWindow::restoreLayoutState() {
         const QByteArray state =
             qs.value(QStringLiteral("layout/") + name).toByteArray();
         if (!state.isEmpty()) s->restoreState(state);
+    }
+    if (auto* live = findChild<CollapsibleSection*>("SecLive")) {
+        const QVariant v = qs.value(QStringLiteral("layout/secLiveExpanded"));
+        if (v.isValid()) live->setExpanded(v.toBool());
     }
 }
 

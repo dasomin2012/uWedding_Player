@@ -3,13 +3,18 @@
 #include "scene/SceneModel.h"
 
 #include <QCheckBox>
+#include <QColor>
+#include <QColorDialog>
 #include <QComboBox>
+#include <QFontComboBox>
 #include <QFormLayout>
 #include <QGridLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPair>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSlider>
 #include <QSpinBox>
@@ -18,6 +23,23 @@
 #include <QtMath>
 
 namespace uwp {
+
+// 색 견본 스타일시트 — QPushButton 위에 색 사각형을 그려주는 헬퍼.
+//  버튼 크기는 CSS 로 정한다(레이아웃 재계산 최소화). 팔레트로 배경만 바꾸면
+//  일부 스타일에서 무시되므로 stylesheet 로 강제.
+static void applySwatch(QPushButton* btn, const QColor& c) {
+    const QString hex = c.name(QColor::HexRgb);
+    // 어두운 배경엔 밝은 테두리, 밝은 배경엔 어두운 테두리 — 대비 확보.
+    const QString border = (c.lightnessF() > 0.5) ? "#5a5a5a" : "#c0c0c0";
+    btn->setStyleSheet(
+        QString("QPushButton { background:%1; color:%2; border:1px solid %3;"
+                "               border-radius:4px; padding:2px 8px; min-width:56px; }"
+                "QPushButton:hover { border-color:#888; }")
+            .arg(hex)
+            .arg((c.lightnessF() > 0.5) ? "#111" : "#eee")
+            .arg(border));
+    btn->setText(hex);
+}
 
 // 비율 정규화 — 운영자가 "일반 화면비 대비 얼마나 다른가"를 즉시 읽도록
 // 16 또는 9 중 하나를 축으로 고정해서 (X, Y) 정수 쌍으로 반환.
@@ -104,6 +126,81 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     auto* zrow1 = new QHBoxLayout; zrow1->addWidget(m_btnFront); zrow1->addWidget(m_btnRaise);
     auto* zrow2 = new QHBoxLayout; zrow2->addWidget(m_btnLower); zrow2->addWidget(m_btnBack);
 
+    // ----- 텍스트 위젯 편집 컨텐츠 -----
+    //   우측 컬럼의 CollapsibleSection("자막 속성") 이 이 위젯을 setContent
+    //   로 받아 재부모한다. 초기 부모는 PropertyPanel 자신 — 아직 상위가
+    //   섹션 setContent 를 호출하지 않은 상태에서도 소유권 누수를 막는다.
+    m_textContent = new QWidget(this);
+    m_textEdit = new QPlainTextEdit;
+    m_textEdit->setPlaceholderText(tr("여기에 문자열을 입력하세요"));
+    // 3~4줄 정도 편집 영역. 자막·안내문 위주로 짧다는 가정.
+    m_textEdit->setFixedHeight(72);
+    m_textEdit->setTabChangesFocus(true);   // Tab 은 포커스 이동 (편집 아님)
+
+    m_textFont = new QFontComboBox;
+    m_textFont->setEditable(false);
+
+    m_textSize = new QSpinBox;
+    m_textSize->setRange(4, 2000);         // 대형 LED 캔버스도 대비
+    m_textSize->setSuffix(" px");
+    m_textSize->setSingleStep(2);
+
+    m_textBold = new QCheckBox(tr("굵게"));
+
+    m_textHAlign = new QComboBox;
+    m_textHAlign->addItem(tr("왼쪽"),   0);
+    m_textHAlign->addItem(tr("가운데"), 1);
+    m_textHAlign->addItem(tr("오른쪽"), 2);
+
+    m_textVAlign = new QComboBox;
+    m_textVAlign->addItem(tr("위"),    0);
+    m_textVAlign->addItem(tr("가운데"), 1);
+    m_textVAlign->addItem(tr("아래"),  2);
+
+    m_textColorBtn = new QPushButton;
+    m_textColorBtn->setToolTip(tr("글자색 — 클릭해서 선택"));
+    applySwatch(m_textColorBtn, QColor("#ffffff"));
+
+    m_bgColorBtn = new QPushButton;
+    m_bgColorBtn->setToolTip(tr("배경색 — 클릭해서 선택 (투명도는 아래 슬라이더)"));
+    applySwatch(m_bgColorBtn, QColor("#000000"));
+
+    m_bgOpacitySlider = new QSlider(Qt::Horizontal);
+    m_bgOpacitySlider->setRange(0, 100);
+    m_bgOpacityReadout = new QLabel(tr("배경 투명도: 0%"));
+
+    m_textPadding = new QSpinBox;
+    m_textPadding->setRange(0, 500);
+    m_textPadding->setSuffix(" px");
+
+    // 컨텐츠 내부 폼 — 라벨 폭 통일로 정돈감.
+    auto* tf = new QFormLayout(m_textContent);
+    tf->setContentsMargins(8, 6, 8, 8);
+    tf->setSpacing(6);
+    tf->addRow(tr("내용"), m_textEdit);
+    tf->addRow(tr("글꼴"), m_textFont);
+    auto* sizeRow = new QHBoxLayout;
+    sizeRow->addWidget(m_textSize);
+    sizeRow->addSpacing(8);
+    sizeRow->addWidget(m_textBold);
+    sizeRow->addStretch(1);
+    tf->addRow(tr("크기"), sizeRow);
+    auto* alignRow = new QHBoxLayout;
+    alignRow->addWidget(m_textHAlign);
+    alignRow->addWidget(m_textVAlign);
+    tf->addRow(tr("정렬"), alignRow);
+    tf->addRow(tr("글자색"), m_textColorBtn);
+    tf->addRow(tr("배경색"), m_bgColorBtn);
+    auto* bgOpBox = new QVBoxLayout;
+    bgOpBox->setContentsMargins(0, 0, 0, 0);
+    bgOpBox->setSpacing(2);
+    bgOpBox->addWidget(m_bgOpacityReadout);
+    bgOpBox->addWidget(m_bgOpacitySlider);
+    tf->addRow(tr("배경 투명도"), bgOpBox);
+    tf->addRow(tr("여백"), m_textPadding);
+    // 접힘/노출 로직은 상위(ControlWindow)의 CollapsibleSection 담당.
+    // PropertyPanel 은 값 로드/커밋만 처리.
+
     // ----- 레이아웃 -----
     auto* form = new QFormLayout;
     form->addRow("미디어", m_media);
@@ -181,6 +278,51 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     connect(m_aspectH, &QSpinBox::editingFinished,
             this, &PropertyPanel::onAspectChanged);
 
+    // ---- 텍스트 편집 시그널 → 모델 ----
+    // 내용: textChanged 는 타이핑마다 발화 → 라이브 미리보기. m_loading
+    // 가드로 load 중 재진입 차단, setText 자체가 값 동일 시 no-op 이므로
+    // layerChanged 폭주 없음.
+    connect(m_textEdit, &QPlainTextEdit::textChanged,
+            this, &PropertyPanel::commitText);
+    connect(m_textFont, &QFontComboBox::currentFontChanged, this,
+            [this](const QFont& f) {
+                if (m_loading || m_id.isEmpty()) return;
+                m_model->setFontFamily(m_id, f.family());
+            });
+    connect(m_textSize, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int v) {
+                if (m_loading || m_id.isEmpty()) return;
+                m_model->setFontSize(m_id, v);
+            });
+    connect(m_textBold, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_loading || m_id.isEmpty()) return;
+        m_model->setFontWeight(m_id, on ? 700 : 400);
+    });
+    connect(m_textHAlign, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int idx) {
+                if (m_loading || m_id.isEmpty()) return;
+                m_model->setTextAlign(m_id, m_textHAlign->itemData(idx).toInt());
+            });
+    connect(m_textVAlign, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int idx) {
+                if (m_loading || m_id.isEmpty()) return;
+                m_model->setTextVAlign(m_id, m_textVAlign->itemData(idx).toInt());
+            });
+    connect(m_textColorBtn, &QPushButton::clicked,
+            this, &PropertyPanel::pickTextColor);
+    connect(m_bgColorBtn, &QPushButton::clicked,
+            this, &PropertyPanel::pickBgColor);
+    connect(m_bgOpacitySlider, &QSlider::valueChanged, this, [this](int v) {
+        m_bgOpacityReadout->setText(QString(tr("배경 투명도: %1%")).arg(v));
+        if (m_loading || m_id.isEmpty()) return;
+        m_model->setBgOpacity(m_id, v / 100.0);
+    });
+    connect(m_textPadding, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, [this](int v) {
+                if (m_loading || m_id.isEmpty()) return;
+                m_model->setPadding(m_id, v);
+            });
+
     setEnabledAll(false);
 }
 
@@ -194,6 +336,7 @@ void PropertyPanel::setEnabledAll(bool on) {
         (QWidget*)m_btnLower, (QWidget*)m_btnBack,
     };
     for (QWidget* w : widgets) if (w) w->setEnabled(on);
+    // 텍스트 그룹은 mediaType 에 따라 별도 로직에서 show/hide (setEnabled 아님).
 }
 
 void PropertyPanel::onSelectionChanged(const QString& id) {
@@ -201,10 +344,18 @@ void PropertyPanel::onSelectionChanged(const QString& id) {
     if (id.isEmpty()) {
         m_media->setText("(선택된 레이어 없음)");
         setEnabledAll(false);
+        // 자막 컨텐츠는 상위 CollapsibleSection 이 접힘 상태로만 노출/은닉.
+        // 값은 갱신하지 않는다 — 다음 선택 시 loadFrom 이 재로드.
         return;
     }
     setEnabledAll(true);
     loadFrom(id);
+}
+
+bool PropertyPanel::isTextLayerSelected() const {
+    if (m_id.isEmpty()) return false;
+    const Layer* l = m_model ? m_model->layer(m_id) : nullptr;
+    return l && l->mediaType == MediaType::Text;
 }
 
 void PropertyPanel::onLayerChanged(const QString& id) {
@@ -215,7 +366,10 @@ void PropertyPanel::loadFrom(const QString& id) {
     const Layer* l = m_model->layer(id);
     if (!l) return;
     m_loading = true;
-    m_media->setText(l->media);
+    // 텍스트 레이어는 파일 경로가 없다 — "(텍스트)" 자리표시자로 대체.
+    m_media->setText(l->mediaType == MediaType::Text
+                         ? QStringLiteral("(텍스트)")
+                         : l->media);
     m_name->setText(l->name);
     m_x->setValue(qRound(l->geometry.x()));
     m_y->setValue(qRound(l->geometry.y()));
@@ -234,6 +388,35 @@ void PropertyPanel::loadFrom(const QString& id) {
             m_aspectW->setValue(ap.first);
             m_aspectH->setValue(ap.second);
         }
+    }
+
+    // ---- 텍스트 필드 값 로드 (mediaType==Text 일 때만) ----
+    //  자막 컨텐츠의 접힘/노출은 상위 CollapsibleSection 이 담당한다.
+    //  여기서는 값만 갱신 — 다른 타입 선택 시엔 폼을 건드리지 않아
+    //  이전 텍스트 편집 상태(예: 커서 위치)가 훼손되지 않도록 함.
+    if (l->mediaType == MediaType::Text) {
+        // QPlainTextEdit::setPlainText 는 항상 textChanged 를 발화 →
+        // m_loading 가드가 setText 재진입을 막지만, 커서 위치는 문서 끝으로
+        // 이동한다. 원본과 동일할 때는 아예 건드리지 않아 편집 흐름 보존.
+        if (m_textEdit->toPlainText() != l->text)
+            m_textEdit->setPlainText(l->text);
+        m_textFont->setCurrentFont(QFont(l->fontFamily));
+        m_textSize->setValue(l->fontSize);
+        m_textBold->setChecked(l->fontWeight >= 700);
+        {
+            const int idx = m_textHAlign->findData(l->textAlign);
+            if (idx >= 0) m_textHAlign->setCurrentIndex(idx);
+        }
+        {
+            const int idx = m_textVAlign->findData(l->textVAlign);
+            if (idx >= 0) m_textVAlign->setCurrentIndex(idx);
+        }
+        applySwatch(m_textColorBtn, QColor(l->textColor));
+        applySwatch(m_bgColorBtn,   QColor(l->bgColor));
+        const int bgPct = qBound(0, qRound(l->bgOpacity * 100.0), 100);
+        m_bgOpacitySlider->setValue(bgPct);
+        m_bgOpacityReadout->setText(QString(tr("배경 투명도: %1%")).arg(bgPct));
+        m_textPadding->setValue(l->padding);
     }
     m_loading = false;
 }
@@ -298,6 +481,34 @@ void PropertyPanel::onOpacitySliderReleased() {
 void PropertyPanel::commitName() {
     if (m_loading || m_id.isEmpty()) return;
     m_model->setName(m_id, m_name->text());
+}
+
+// ---- 텍스트 위젯 커밋 ------------------------------------------
+void PropertyPanel::commitText() {
+    if (m_loading || m_id.isEmpty()) return;
+    m_model->setText(m_id, m_textEdit->toPlainText());
+}
+
+void PropertyPanel::pickTextColor() {
+    if (m_id.isEmpty()) return;
+    const Layer* l = m_model->layer(m_id);
+    if (!l) return;
+    const QColor c = QColorDialog::getColor(QColor(l->textColor), this,
+                                            tr("글자색 선택"));
+    if (!c.isValid()) return;
+    applySwatch(m_textColorBtn, c);
+    m_model->setTextColor(m_id, c.name(QColor::HexRgb));
+}
+
+void PropertyPanel::pickBgColor() {
+    if (m_id.isEmpty()) return;
+    const Layer* l = m_model->layer(m_id);
+    if (!l) return;
+    const QColor c = QColorDialog::getColor(QColor(l->bgColor), this,
+                                            tr("배경색 선택"));
+    if (!c.isValid()) return;
+    applySwatch(m_bgColorBtn, c);
+    m_model->setBgColor(m_id, c.name(QColor::HexRgb));
 }
 
 } // namespace uwp
