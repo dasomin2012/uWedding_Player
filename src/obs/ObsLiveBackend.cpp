@@ -4,6 +4,7 @@
 #include "ObsProcessManager.h"
 
 #include <QByteArray>
+#include <QColor>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
@@ -315,6 +316,37 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
     } else if (L.mediaType == MediaType::Image) {
         kind = QStringLiteral("image_source");
         settings["file"] = mediaPath;
+    } else if (L.mediaType == MediaType::Text) {
+        // text_gdiplus_v3: Windows OBS 표준 텍스트 소스.
+        //   extents 로 고정 크기 지정 → source 원본 크기 = extents_cx × cy →
+        //   상단 GetSceneItemTransform+scale=1.0 경로에서 그대로 배치.
+        //   색은 OBS 관례상 ABGR (little-endian) uint32 를 signed int 로 저장.
+        auto abgr = [](const QString& hex, int alpha = 255) -> qint64 {
+            const QColor c(hex);
+            return (qint64(alpha)      << 24)
+                 | (qint64(c.blue())   << 16)
+                 | (qint64(c.green())  << 8)
+                 |  qint64(c.red());
+        };
+        kind = QStringLiteral("text_gdiplus_v3");
+        QJsonObject font;
+        font["face"]  = L.fontFamily;
+        font["size"]  = L.fontSize;
+        font["flags"] = (L.fontWeight >= 700) ? 1 : 0;   // OBS_FONT_BOLD
+        settings["text"]         = L.text;
+        settings["font"]         = font;
+        settings["color"]        = abgr(L.textColor);
+        settings["bk_color"]     = abgr(L.bgColor);
+        settings["bk_opacity"]   = qBound(0, qRound(L.bgOpacity * 100.0), 100);
+        settings["align"]        = (L.textAlign == 0) ? "left"
+                                 : (L.textAlign == 2) ? "right" : "center";
+        settings["valign"]       = (L.textVAlign == 0) ? "top"
+                                 : (L.textVAlign == 2) ? "bottom" : "center";
+        settings["extents"]      = true;
+        settings["extents_cx"]   = qMax(1, qRound(L.geometry.width()));
+        settings["extents_cy"]   = qMax(1, qRound(L.geometry.height()));
+        settings["extents_wrap"] = true;
+        // Layer.padding 은 text_gdiplus 에 대응 필드 없음 — Qt engine 만 지원.
     } else {
         qWarning() << "ObsLiveBackend: skipping unsupported layer"
                    << L.id << "(type" << static_cast<int>(L.mediaType)

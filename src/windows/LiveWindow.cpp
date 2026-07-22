@@ -2,6 +2,7 @@
 
 #include "player/VideoWidget.h"
 #include "player/ImageWidget.h"
+#include "player/TextWidget.h"
 
 #include <QGuiApplication>
 #include <QScreen>
@@ -93,6 +94,13 @@ LiveWindow::LiveLayer LiveWindow::buildLayer(const Layer& l) {
         iw->load(l.media);
         iw->show();
         ll.widget = iw;
+        break;
+    }
+    case MediaType::Text: {
+        auto* tw = new TextWidget(l, this);
+        tw->setGeometry(mapRect(l.geometry));
+        tw->show();
+        ll.widget = tw;
         break;
     }
     default: {  // Document / Unknown → placeholder (Phase 8 실렌더)

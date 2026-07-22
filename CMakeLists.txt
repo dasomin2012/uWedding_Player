@@ -129,6 +129,8 @@ set(UWP_SOURCES
     src/player/SnapshotCache.cpp
     src/player/ImageWidget.h
     src/player/ImageWidget.cpp
+    src/player/TextWidget.h
+    src/player/TextWidget.cpp
 
     src/live/ILiveSink.h
 

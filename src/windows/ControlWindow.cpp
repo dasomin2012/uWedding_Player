@@ -1097,14 +1097,17 @@ void ControlWindow::createCentralLayout() {
     setLiveState(LiveState::Idle);
     setLivePowerOff(false);
 
+    // 앱 최초 실행 시 모든 속성 섹션은 접힘 상태. 대응 선택(레이어/카드)이
+    // 있어야만 자동 펼침. 사용자가 화면 진입 즉시 하단 편집에만 집중할 수 있도록.
     auto* mediaSection = new CollapsibleSection(tr("미디어 속성"));
     mediaSection->setObjectName("SecMedia");
     mediaSection->setContent(m_property);
+    mediaSection->setExpanded(false);
 
     auto* textSection = new CollapsibleSection(tr("자막 속성"));
     textSection->setObjectName("SecText");
     textSection->setContent(m_property->textContent());
-    textSection->setExpanded(false);   // 초기엔 접힘 — 텍스트 선택 시 자동 펼침
+    textSection->setExpanded(false);
 
     // 페이지·프로그램 속성 섹션 — 컨텍스트 메뉴 대체. 선택 시 자동 펼침.
     auto* pageSectionR = new CollapsibleSection(tr("페이지 속성"));
@@ -1166,16 +1169,17 @@ void ControlWindow::createCentralLayout() {
     // rightCol 자리에 들어갈 최종 위젯 — 아래 outer 3-column splitter 가 참조.
     auto* rightCol = rightScroll;
 
-    // 자동 접힘 힌트: 선택 레이어가 텍스트면 자막 섹션만 펼침, 그 외엔
-    // 미디어 섹션만 펼침. Live 는 항상 사용자 결정을 존중.
-    //   현재는 단순 규칙 — 사용자가 명시적으로 조작한 상태를 오래 유지하려면
-    //   섹션별 "수동 조작 플래그" 도입이 필요하지만, 우선 명료성을 우선.
+    // 레이어 선택 → 대응 속성만 펼침, 나머지(페이지/프로그램 포함) 접힘.
+    //   Live 는 사용자 결정 유지.
     connect(m_scene, &SceneModel::selectionChanged, this,
-            [this, mediaSection, textSection](const QString& id) {
+            [this, mediaSection, textSection, pageSectionR, progSection](
+                const QString& id) {
                 if (id.isEmpty()) return;   // 선택 해제 시엔 유지
                 const bool isText = m_property && m_property->isTextLayerSelected();
                 mediaSection->setExpanded(!isText);
                 textSection->setExpanded(isText);
+                pageSectionR->setExpanded(false);
+                progSection->setExpanded(false);
             });
 
     // OUTER: 3-column horizontal splitter
