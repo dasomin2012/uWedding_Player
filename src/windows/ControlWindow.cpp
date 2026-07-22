@@ -58,6 +58,32 @@ QMainWindow, QWidget#Central {
 }
 QWidget { font-size: 13px; color: #1c1512; }
 
+/* 대화상자·메시지박스 — 테마 배경과 매칭. */
+QDialog, QMessageBox, QInputDialog {
+    background: #fdfaf5;
+    color: #1c1512;
+}
+QDialog QLabel, QMessageBox QLabel, QInputDialog QLabel {
+    color: #1c1512;
+    background: transparent;
+}
+QGroupBox {
+    background: transparent;
+    border: 1px solid #dcd3c6;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding-top: 8px;
+    color: #1c1512;
+    font-weight: 600;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 6px;
+    left: 8px;
+    color: #8a7d70;
+}
+
 QFrame#Panel {
     background: #fdfaf5;
     border: 1px solid #dcd3c6;
@@ -294,6 +320,32 @@ QMainWindow, QWidget#Central {
     color: #e8ddd0;
 }
 QWidget { font-size: 13px; color: #e8ddd0; }
+
+/* 대화상자·메시지박스 — 테마 배경과 매칭. */
+QDialog, QMessageBox, QInputDialog {
+    background: #1e1a17;
+    color: #e8ddd0;
+}
+QDialog QLabel, QMessageBox QLabel, QInputDialog QLabel {
+    color: #e8ddd0;
+    background: transparent;
+}
+QGroupBox {
+    background: transparent;
+    border: 1px solid #2c2620;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding-top: 8px;
+    color: #e8ddd0;
+    font-weight: 600;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 6px;
+    left: 8px;
+    color: #8f857a;
+}
 
 QFrame#Panel {
     background: #1e1a17;
