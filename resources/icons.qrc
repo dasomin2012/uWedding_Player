@@ -17,6 +17,7 @@
         <file alias="pause.svg">icons/pause.svg</file>
         <file alias="maximize.svg">icons/maximize-2.svg</file>
         <file alias="trash.svg">icons/trash-2.svg</file>
+        <file alias="type.svg">icons/type.svg</file>
         <!-- Hanmac 로고의 H 문자를 추출한 앱 아이콘 (다양한 크기). -->
         <file alias="app_h_16.png">icons/app_h_16.png</file>
         <file alias="app_h_24.png">icons/app_h_24.png</file>

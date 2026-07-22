@@ -841,8 +841,9 @@ void ControlWindow::createCentralLayout() {
                     QRectF((cs.width() - w) / 2.0,
                            (cs.height() - h) / 2.0, w, h));
             });
-    // "+ 텍스트" — 파일 없이 씬에 텍스트 레이어 신규 생성.
-    connect(m_mediaList, &MediaListWidget::addTextLayerRequested,
+    // "+ 텍스트" — Preview 툴바 아이콘에서 발화 (UI-F 신호). 파일 없이 씬에
+    // 텍스트 레이어 신규 생성. 시계·날씨 위젯도 추후 같은 시그널 채널로 확장.
+    connect(this, &ControlWindow::addTextLayerRequested,
             this, [this]{ m_scene->addTextLayer(QString()); });
 
     // ----- Preview 캔버스 -----
@@ -1050,6 +1051,18 @@ QWidget* ControlWindow::buildPreviewPane() {
     connect(this, &ControlWindow::takeRequested,
             this, &ControlWindow::resetPreviewSim);
 
+    // 위젯 추가 클러스터 — 파일 없이 캔버스에 직접 얹는 요소들.
+    //   [T] 텍스트 (Lucide "type" — 대문자 T 세리프 형태)
+    //   추후 시계·날씨·QR 등 동종 위젯을 같은 클러스터에 나란히 배치.
+    //   미디어 라이브러리(파일 소스)와 성격이 다르므로 편집 캔버스 툴바가
+    //   더 자연스러운 자리 — 드래그·드롭 대신 원-클릭 삽입 UX.
+    auto* btnAddText = new QPushButton;
+    btnAddText->setObjectName("PreviewToolBtn");
+    btnAddText->setIcon(QIcon(QStringLiteral(":/icons/type.svg")));
+    btnAddText->setToolTip(tr("텍스트 레이어 추가 — 자막·안내문 등"));
+    connect(btnAddText, &QPushButton::clicked,
+            this, &ControlWindow::addTextLayerRequested);
+
     // 우측: 캔버스에 꽉 채우기 (선택 레이어 → geometry = 캔버스 전체).
     //   Lucide maximize-2 (양방향 확장 화살표) — "꽉 채우기" 의미에 가장 근접.
     m_btnFillCanvas = new QPushButton;
@@ -1091,6 +1104,8 @@ QWidget* ControlWindow::buildPreviewPane() {
     toolbar->addSpacing(8);
     toolbar->addWidget(m_timeLabel);
     toolbar->addStretch(1);
+    toolbar->addWidget(btnAddText);         // 위젯 클러스터: 텍스트(추후 시계·날씨)
+    toolbar->addSpacing(12);                // 위젯 ↔ 편집 액션 시각 구분
     toolbar->addWidget(m_btnFillCanvas);    // 우측: 꽉 채우기
     toolbar->addWidget(m_btnDeleteLayer);   // 우측 끝: 삭제
 

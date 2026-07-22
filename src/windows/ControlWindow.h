@@ -105,6 +105,9 @@ signals:
     // 클러스터 ▶/⏸ 버튼 — 재생/일시정지 토글. Application 이 컨텍스트
     // (재생중이면 pause, 일시정지면 resume, 대기면 편집중 프로그램 재생)로 판단.
     void playPauseRequested();
+    // Preview 툴바의 "+ 텍스트" 아이콘 — 씬에 텍스트 레이어 신규 생성.
+    // 시계·날씨 위젯도 향후 같은 패턴으로 확장.
+    void addTextLayerRequested();
 
 private:
     void createMenus();

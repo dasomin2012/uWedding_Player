@@ -31,8 +31,6 @@ public:
 
 signals:
     void mediaActivated(const QString& path);   // 더블클릭
-    // "+ 텍스트" 버튼 — 파일 없이 씬에 텍스트 레이어 생성 요청.
-    void addTextLayerRequested();
 
 private slots:
     void openFile();
