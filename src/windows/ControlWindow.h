@@ -21,6 +21,8 @@ class PropertyPanel;
 class MediaListWidget;
 class ProgramListWidget;
 class PageListWidget;
+class PageProperties;
+class ProgramProperties;
 
 // Phase 3 운용자 화면.
 //   +-----------+----------------------+----------+
@@ -82,9 +84,11 @@ public slots:
     void restartPreviewCountdown(int newTotalSec);
 
 public:
-    ProgramListWidget* programList()  const { return m_programList; }  // Application 와이어링용
-    PageListWidget*    pageList()     const { return m_pageList; }     // UI-D Phase B
-    PreviewCanvas*     previewCanvas() const { return m_canvas; }      // 썸네일 렌더용
+    ProgramListWidget* programList()   const { return m_programList; }  // Application 와이어링용
+    PageListWidget*    pageList()      const { return m_pageList; }     // UI-D Phase B
+    PreviewCanvas*     previewCanvas() const { return m_canvas; }       // 썸네일 렌더용
+    PageProperties*    pageProperties()   const { return m_pageProps; }
+    ProgramProperties* programProperties() const { return m_progProps; }
 
 signals:
     void selectOutputMonitorRequested();
@@ -133,6 +137,8 @@ protected:
     PropertyPanel*   m_property   = nullptr;
     QLabel*            m_liveMirror  = nullptr;
     ProgramListWidget* m_programList = nullptr;
+    PageProperties*    m_pageProps   = nullptr;   // 우측 [페이지 속성] 섹션
+    ProgramProperties* m_progProps   = nullptr;   // 우측 [프로그램 속성] 섹션
 
     // UI-C: TAKE 클러스터 (Live mirror 아래)
     //  검정 화면은 별도 버튼 없이 "빈 프로그램(레이어 0개)"을 TAKE 로 실행 —

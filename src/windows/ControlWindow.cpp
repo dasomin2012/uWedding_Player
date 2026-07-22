@@ -8,7 +8,9 @@
 #include "app/Settings.h"
 #include "scene/SceneModel.h"
 #include "editor/CollapsibleSection.h"
+#include "editor/PageProperties.h"
 #include "editor/PreviewCanvas.h"
+#include "editor/ProgramProperties.h"
 #include "editor/PropertyPanel.h"
 #include "editor/MediaListWidget.h"
 #include "program/PageListWidget.h"
@@ -930,6 +932,8 @@ void ControlWindow::createCentralLayout() {
 
     // ----- Property Panel -----
     m_property = new PropertyPanel(m_scene);
+    m_pageProps = new PageProperties;
+    m_progProps = new ProgramProperties;
 
     // ----- UI-C: TAKE 클러스터 (Live 미러 아래 배치) -----
     m_takeButton = new QPushButton(tr("TAKE"));
@@ -986,19 +990,32 @@ void ControlWindow::createCentralLayout() {
     //   전환은 카드 더블클릭.
     m_pageList->setTitleVisible(false);
 
-    auto* pageSection = new CollapsibleSection(tr("페이지"));
+    auto* pageSection = new CollapsibleSection(tr("페이지 리스트"));
     pageSection->setObjectName("SecPage");
     pageSection->setContent(m_pageList);
-    pageSection->setHeaderRight(m_pageList->addButton());
+    // 헤더 타이틀은 편집중 프로그램 이름에 따라 갱신 — "[이름] - 페이지 리스트".
+    connect(m_pageList, &PageListWidget::programChanged, this,
+            [pageSection](const QString& programName){
+                pageSection->setTitle(programName.isEmpty()
+                    ? tr("페이지 리스트")
+                    : tr("%1 - 페이지 리스트").arg(programName));
+            });
 
-    // bstL 구조: [pageSection] / [프로그램 스트립] — 스페이서 없음.
-    //   페이지와 프로그램이 붙어 있고, programPanel 자체가 sizeHint 만큼만
-    //   센터 컬럼에서 배정받아 아래에도 잉여 없음.
+    // bstL 구조: [pageSection] / [앰버 경계선] / [프로그램 스트립].
+    //   페이지와 프로그램이 붙어 있고, 그 사이 얇은 앰버 라인이 "탭 인디케이터"
+    //   느낌을 준다 — 선택된 프로그램 pill 과 같은 색.
+    //   페이지 접힘 시 프로그램·라인 모두 숨겨 페이지 헤더 한 줄만 남김.
     auto* bottomStack = new QWidget;
     auto* bstL = new QVBoxLayout(bottomStack);
     bstL->setContentsMargins(0, 0, 0, 0);
     bstL->setSpacing(6);
+    auto* accentLine = new QFrame;
+    accentLine->setObjectName("PageProgramSep");
+    accentLine->setFixedHeight(3);
+    accentLine->setStyleSheet(
+        "QFrame#PageProgramSep { background: #f59e0b; border: none; }");
     bstL->addWidget(pageSection, 0);
+    bstL->addWidget(accentLine, 0);
     bstL->addWidget(m_programList, 0);
 
     auto* programPanel = wrapPanel(bottomStack);
@@ -1034,8 +1051,9 @@ void ControlWindow::createCentralLayout() {
     //  + 페이지 접힘 시엔 프로그램 스트립도 함께 숨김 (사용자 요구:
     //    페이지=편집 컨텍스트, 페이지 접힘 = 하단 전체 최소화).
     connect(pageSection, &CollapsibleSection::expandedChanged, this,
-            [this, refreshSplit](bool expanded){
+            [this, refreshSplit, accentLine](bool expanded){
                 m_programList->setVisible(expanded);
+                accentLine->setVisible(expanded);
                 QTimer::singleShot(0, this, [refreshSplit]{ refreshSplit(); });
             });
     connect(m_programList, &ProgramListWidget::collapseChanged, this,
@@ -1088,6 +1106,39 @@ void ControlWindow::createCentralLayout() {
     textSection->setContent(m_property->textContent());
     textSection->setExpanded(false);   // 초기엔 접힘 — 텍스트 선택 시 자동 펼침
 
+    // 페이지·프로그램 속성 섹션 — 컨텍스트 메뉴 대체. 선택 시 자동 펼침.
+    auto* pageSectionR = new CollapsibleSection(tr("페이지 속성"));
+    pageSectionR->setObjectName("SecPageProps");
+    pageSectionR->setContent(m_pageProps);
+    pageSectionR->setExpanded(false);
+
+    auto* progSection = new CollapsibleSection(tr("프로그램 속성"));
+    progSection->setObjectName("SecProgProps");
+    progSection->setContent(m_progProps);
+    progSection->setExpanded(false);
+
+    // 프로그램 카드 선택 → 프로그램 속성만 펼침, 나머지 속성 섹션은 접힘.
+    //   Live 는 사용자 결정 유지.
+    if (m_programList) {
+        connect(m_programList, &ProgramListWidget::programSelected, this,
+                [progSection, pageSectionR, mediaSection, textSection](const QString&){
+                    progSection->setExpanded(true);
+                    pageSectionR->setExpanded(false);
+                    mediaSection->setExpanded(false);
+                    textSection->setExpanded(false);
+                });
+    }
+    // 페이지 카드 선택 → 페이지 속성만 펼침, 나머지 속성 섹션은 접힘.
+    if (m_pageList) {
+        connect(m_pageList, &PageListWidget::pageSelected, this,
+                [pageSectionR, progSection, mediaSection, textSection](const QString&){
+                    pageSectionR->setExpanded(true);
+                    progSection->setExpanded(false);
+                    mediaSection->setExpanded(false);
+                    textSection->setExpanded(false);
+                });
+    }
+
     // 우측 컬럼 컨테이너 — QScrollArea 로 감싸 세로 공간이 부족할 때 스크롤.
     auto* rightBox = new QWidget;
     auto* rbL = new QVBoxLayout(rightBox);
@@ -1096,6 +1147,8 @@ void ControlWindow::createCentralLayout() {
     rbL->addWidget(liveSection);
     rbL->addWidget(mediaSection);
     rbL->addWidget(textSection);
+    rbL->addWidget(pageSectionR);
+    rbL->addWidget(progSection);
     rbL->addStretch(1);   // 모두 접혔을 때 헤더가 위쪽에 몰리도록.
 
     auto* rightScroll = new QScrollArea;

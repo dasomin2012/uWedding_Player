@@ -199,31 +199,21 @@ PageListWidget::PageListWidget(QWidget* parent)
             emit deleteRequested(id);
         }, m_list));
 
-    // 상단 툴바: [페이지 제목]  ─────  [+ 페이지 추가].
-    //   프로그램 리스트 헤더와 시각 일관성 (bold 제목 + 우측 액션 버튼).
-    //   상위 CollapsibleSection 안에 배치될 때는 setTitleVisible(false) 로 숨김.
+    // 타이틀 라벨은 이제 상위 CollapsibleSection 헤더가 담당 — 내부 표시 없음.
+    //   ProgramListWidget 과 동일한 [카드 리스트 | + 추가] 한 줄 레이아웃.
     m_titleLabel = new QLabel(tr("페이지"));
-    m_titleLabel->setStyleSheet("font-weight: bold;");
 
-    m_btnAdd = new QPushButton(tr("+ 페이지 추가"));
+    m_btnAdd = new QPushButton(tr("+ 추가"));
     m_btnAdd->setEnabled(false);
     m_btnAdd->setObjectName("PageAddButton");
     connect(m_btnAdd, &QPushButton::clicked, this, &PageListWidget::addRequested);
 
-    // topRow 는 상위 CollapsibleSection 이 addButton() 을 헤더로 재부모하면
-    // 타이틀 라벨(hidden) + stretch 만 남아 사실상 사라진다. 재부모 없이
-    // 단독 사용될 때는 기존 [타이틀 · + 페이지 추가] 배치가 그대로 노출.
-    auto* topRow = new QHBoxLayout;
-    topRow->setContentsMargins(0, 0, 0, 0);
-    topRow->addWidget(m_titleLabel);
-    topRow->addStretch();
-    topRow->addWidget(m_btnAdd);
-
-    auto* lay = new QVBoxLayout(this);
+    // [카드 리스트 stretch=1 | + 추가 (세로 중앙)] — 프로그램 스트립과 동일.
+    auto* lay = new QHBoxLayout(this);
     lay->setContentsMargins(0, 0, 0, 0);
-    lay->setSpacing(4);
-    lay->addLayout(topRow);
+    lay->setSpacing(6);
     lay->addWidget(m_list, 1);
+    lay->addWidget(m_btnAdd, 0, Qt::AlignVCenter);
 
     connect(m_list, &QListWidget::itemClicked, this, [this](QListWidgetItem* it){
         if (it) emit pageSelected(it->data(Qt::UserRole).toString());
@@ -236,9 +226,14 @@ void PageListWidget::setProgram(const Program* program, const QString& dataDir) 
     m_dataDir = dataDir;
     m_list->clear();
 
-    // + 버튼 활성/비활성 갱신 (자식 위젯에서 objectName 으로 찾기)
-    QPushButton* btnAdd = findChild<QPushButton*>(QStringLiteral("PageAddButton"));
-    if (btnAdd) btnAdd->setEnabled(program != nullptr);
+    // + 추가 버튼 활성/비활성 — 이전 구현은 findChild 로 버튼을 찾았으나,
+    //   상위가 setHeaderRight 로 버튼을 재부모하면 findChild 가 nullptr 을
+    //   반환해 항상 disabled 상태로 남는 회귀가 있었다. m_btnAdd 직접 사용.
+    if (m_btnAdd) m_btnAdd->setEnabled(program != nullptr);
+
+    // 편집 대상 프로그램 이름 변화를 상위(섹션 헤더 등)에 전파.
+    emit programChanged(program ? program->name : QString());
+
     if (!program) return;
 
     const QPixmap fallback = makeDefaultThumb();
@@ -250,8 +245,9 @@ void PageListWidget::setProgram(const Program* program, const QString& dataDir) 
             if (QFileInfo::exists(abs)) thumb.load(abs);
         }
         if (thumb.isNull()) thumb = fallback;
+        // 라벨: 이름이 있으면 이름, 없으면 "Page N" (숫자만은 정보량 부족).
         const QString label = pg.name.isEmpty()
-            ? QString::number(i + 1) : pg.name;
+            ? tr("Page %1").arg(i + 1) : pg.name;
         auto* item = new QListWidgetItem(QIcon(thumb), label, m_list);
         item->setData(Qt::UserRole, pg.id);
         item->setToolTip(label);

@@ -41,7 +41,7 @@ public:
     QPushButton* addButton() const { return m_btnAdd; }
 
 signals:
-    void addRequested();                                 // [+ 페이지 추가]
+    void addRequested();                                 // [+ 추가]
     void pageSelected(const QString& id);                // 카드 클릭
     void deleteRequested(const QString& id);             // 카드 X (또는 우클릭)
     void renameRequested(const QString& id, const QString& newName);
@@ -50,6 +50,9 @@ signals:
     // 페이지 단위 표시 시간(자동 진행 초) 편집 요청 — Application 이 현재값
     // 조회 후 QInputDialog::getInt 팝업.
     void displayTimeEditRequested(const QString& id);
+    // 편집 대상 프로그램이 바뀔 때(setProgram) 발화 — 상위가 섹션 헤더
+    // 타이틀 등에 반영. programName 은 프로그램 없을 때 빈 문자열.
+    void programChanged(const QString& programName);
 
 private:
     void showContextMenu(const QPoint& pos);

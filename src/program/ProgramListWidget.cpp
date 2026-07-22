@@ -164,11 +164,13 @@ public:
         //   선택(편집 대상) = 앰버
         //   hover = 크림
         //   기본 = 백색 + 브론즈 테두리
+        //  컴팩트 pill 실크기 = 셀(200x40) - card 여백(4) - pill 여백(2) = 188x28.
+        //  풀 모드에서도 시각 통일을 위해 세로 28 로 명시 고정.
         const QString name = idx.data(Qt::DisplayRole).toString();
         const QRect pill(card.x() + kPad,
                          iconRect.bottom() + kPad,
                          card.width() - kPad * 2,
-                         40);
+                         28);
         QColor bg      = QColor(0xff, 0xff, 0xff);
         QColor border  = QColor(0xd3, 0xc8, 0xb8);
         QColor textCol = QColor(0x1c, 0x15, 0x12);
@@ -287,6 +289,9 @@ public:
                      const QModelIndex& idx) override {
         if (ev->type() == QEvent::MouseButtonPress) {
             auto* me = static_cast<QMouseEvent*>(ev);
+            // 컴팩트 모드에선 썸네일/X 버튼을 그리지 않는다. 그런데도 xRect
+            // 히트 판정이 살아있으면 pill 우측 클릭이 삭제로 오인된다.
+            if (property("collapsedMode").toBool()) return false;
             const QRect card = opt.rect.adjusted(4, 4, -4, -4);
             const QRect iconRect(card.x() + (card.width() - kThumbSize.width()) / 2,
                                  card.y() + kPad,
@@ -350,14 +355,14 @@ ProgramListWidget::ProgramListWidget(QWidget* parent)
             if (r == QMessageBox::Yes) emit deleteRequested(id);
         }, m_list));
 
-    // [카드 리스트 stretch=1  |  + 추가 (상단 정렬)]
-    //   버튼은 자기 sizeHint 만 취해 스트립 우측 상단에 고정.
-    //   리스트가 setFixedHeight(96/234) 를 통해 스트립 세로 크기 결정.
+    // [카드 리스트 stretch=1  |  + 추가 (세로 중앙)]
+    //   버튼은 자기 sizeHint 만 취해 스트립 우측 세로 중앙에 위치.
+    //   리스트가 setFixedHeight(44/180) 를 통해 스트립 세로 크기 결정.
     auto* lay = new QHBoxLayout(this);
     lay->setContentsMargins(0, 4, 0, 0);
     lay->setSpacing(6);
     lay->addWidget(m_list, 1);
-    lay->addWidget(m_btnAdd, 0, Qt::AlignTop);
+    lay->addWidget(m_btnAdd, 0, Qt::AlignVCenter);
 
     connect(m_list, &QListWidget::itemClicked, this, [this](QListWidgetItem* it) {
         if (!it) return;

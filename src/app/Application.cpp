@@ -13,6 +13,8 @@
 #include "program/ProgramRepository.h"
 #include "program/ProgramListWidget.h"
 #include "program/PageListWidget.h"
+#include "editor/PageProperties.h"
+#include "editor/ProgramProperties.h"
 #include "editor/PreviewCanvas.h"
 
 #if defined(UWP_HAS_OBS)
@@ -51,6 +53,9 @@
 #include <QDebug>
 
 namespace uwp {
+
+// 전방 선언 — 아래 정의된 헬퍼가 앞쪽 람다에서도 참조 가능하도록.
+static int pageIndexOf(const Program& p, const QString& pageId);
 
 Application::Application(QObject* parent)
     : QObject(parent)
@@ -239,6 +244,46 @@ bool Application::initialize() {
                 this, &Application::onPageMoveDownRequested);
         connect(pgl, &PageListWidget::displayTimeEditRequested,
                 this, &Application::onPageDisplayTimeEditRequested);
+    }
+    // 우측 패널 [페이지 속성 · 프로그램 속성] — 컨텍스트 메뉴 대체 인라인 편집.
+    if (auto* pp = m_controlWindow->pageProperties()) {
+        connect(pp, &PageProperties::renameRequested, this,
+                [this](const QString& n){
+                    if (!m_editPageId.isEmpty()) onPageRenameRequested(m_editPageId, n);
+                });
+        connect(pp, &PageProperties::displayTimeChanged, this,
+                [this](int sec){
+                    if (m_editProgramId.isEmpty() || m_editPageId.isEmpty()) return;
+                    const Program* p = m_programs->find(m_editProgramId);
+                    if (!p) return;
+                    const int idx = pageIndexOf(*p, m_editPageId);
+                    if (idx < 0 || p->pages[idx].displayTimeSec == sec) return;
+                    Program up = *p;
+                    up.pages[idx].displayTimeSec = sec;
+                    m_programs->update(up);
+                    m_programs->save(resolveProgramsPath());
+                    m_controlWindow->setPreviewDisplayTime(sec);
+                });
+        connect(pp, &PageProperties::moveUpRequested, this,
+                [this]{ if (!m_editPageId.isEmpty()) onPageMoveUpRequested(m_editPageId); });
+        connect(pp, &PageProperties::moveDownRequested, this,
+                [this]{ if (!m_editPageId.isEmpty()) onPageMoveDownRequested(m_editPageId); });
+    }
+    if (auto* pp = m_controlWindow->programProperties()) {
+        connect(pp, &ProgramProperties::renameRequested, this,
+                [this](const QString& n){
+                    if (!m_editProgramId.isEmpty()) onProgramRenameRequested(m_editProgramId, n);
+                });
+        connect(pp, &ProgramProperties::endActionChanged, this,
+                [this](EndAction ea){
+                    if (m_editProgramId.isEmpty()) return;
+                    const Program* p = m_programs->find(m_editProgramId);
+                    if (!p || p->endAction == ea) return;
+                    Program up = *p;
+                    up.endAction = ea;
+                    m_programs->update(up);
+                    m_programs->save(resolveProgramsPath());
+                });
     }
     // 부재 시 빈 리스트로 시작(에러 아님). 손상 시 .bak 백업 후 빈 리스트.
     m_programs->load(resolveProgramsPath());
@@ -869,6 +914,9 @@ void Application::onProgramSelected(const QString& id) {
         pgl->setProgram(p, dataDir());
         pgl->setActivePage(m_editPageId);
     }
+    if (auto* pp = m_controlWindow->programProperties()) pp->setProgram(p);
+    if (auto* pp = m_controlWindow->pageProperties())
+        pp->setPage(&p->pages.first(), 0, p->pages.size());
     m_controlWindow->setPreviewDisplayTime(p->pages.first().displayTimeSec);
     m_controlWindow->setStatusText(tr("Loaded: %1").arg(p->name));
 }
@@ -1447,6 +1495,8 @@ void Application::onPageSelected(const QString& pageId) {
     m_controlWindow->setPreviewDisplayTime(p->pages[idx].displayTimeSec);
     if (auto* pgl = m_controlWindow->pageList())
         pgl->setActivePage(m_editPageId);
+    if (auto* pp = m_controlWindow->pageProperties())
+        pp->setPage(&p->pages[idx], idx, p->pages.size());
 }
 
 void Application::onPageDeleteRequested(const QString& pageId) {

@@ -106,6 +106,10 @@ void CollapsibleSection::updateArrow() {
     m_toggle->setText(m_expanded ? QStringLiteral("▼") : QStringLiteral("▶"));
 }
 
+void CollapsibleSection::setTitle(const QString& title) {
+    if (m_title) m_title->setText(title);
+}
+
 bool CollapsibleSection::eventFilter(QObject* obj, QEvent* ev) {
     // 헤더 프레임 여백 또는 타이틀 라벨 클릭 → 토글.
     //   프레임 위에 있는 QPushButton/QToolButton 등 자식은 자체 클릭을

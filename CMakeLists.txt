@@ -165,6 +165,10 @@ set(UWP_SOURCES
     src/editor/PropertyPanel.cpp
     src/editor/CollapsibleSection.h
     src/editor/CollapsibleSection.cpp
+    src/editor/PageProperties.h
+    src/editor/PageProperties.cpp
+    src/editor/ProgramProperties.h
+    src/editor/ProgramProperties.cpp
 
     # 외부 QSS 테마 (GTRONICK/QSS, MIT) — AUTORCC 로 자동 컴파일.
     resources/themes.qrc

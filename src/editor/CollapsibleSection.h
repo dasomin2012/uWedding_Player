@@ -33,6 +33,9 @@ public:
     void setExpanded(bool on);
     bool isExpanded() const { return m_expanded; }
 
+    // 헤더 타이틀 동적 변경 (예: "[프로그램명] - 페이지 리스트").
+    void setTitle(const QString& title);
+
 signals:
     void expandedChanged(bool expanded);
 
