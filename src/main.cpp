@@ -3,6 +3,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFont>
 #include <QMessageBox>
 #include <QMutex>
 #include <QSharedMemory>
@@ -64,6 +65,16 @@ int main(int argc, char* argv[]) {
     QApplication::setApplicationName("uWeddingPlayer");
     QApplication::setOrganizationName("uWedding");
     QApplication::setApplicationVersion("0.2.0");
+
+    // 앱 UI 기본 폰트 — Windows 기본 한글 폰트 "맑은 고딕" (Malgun Gothic).
+    // 시스템 상주 폰트라 별도 번들 불필요. 미설치 환경(비-Windows/구 XP)에서는
+    // Qt 시스템 폰트로 폴백.
+    {
+        QFont uiFont(QStringLiteral("맑은 고딕"));
+        uiFont.setPointSize(10);
+        uiFont.setStyleStrategy(QFont::PreferAntialias);
+        QApplication::setFont(uiFont);
+    }
 
     installFileLogger();
     // P4: 크래시 시 mini-dump 저장 인프라. 로거 뒤에 등록해 실패 로그 확보.
