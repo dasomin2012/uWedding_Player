@@ -13,6 +13,7 @@ namespace uwp {
 class SceneModel;
 class SnapshotCache;
 class LayerItem;
+class InlineTextEditor;
 
 // 논리 캔버스(Settings 크기)를 씬 좌표로 그리는 편집 뷰.
 //  - 검은 스테이지(LED 경계) + fit/zoom
@@ -35,6 +36,7 @@ protected:
     void resizeEvent(QResizeEvent* e) override;
     void wheelEvent(QWheelEvent* e) override;
     void mousePressEvent(QMouseEvent* e) override;
+    void mouseDoubleClickEvent(QMouseEvent* e) override;
     void dragEnterEvent(QDragEnterEvent* e) override;
     void dragMoveEvent(QDragMoveEvent* e) override;
     void dropEvent(QDropEvent* e) override;
@@ -52,6 +54,9 @@ private:
     void rebuildFromModel();
     void syncCanvasRect();
     void addMediaAt(const QString& path, const QPointF& scenePos);
+    // 텍스트 레이어 캔버스 내 인라인 편집.
+    void beginTextEdit(const QString& layerId);
+    void endTextEdit(bool commit);
 
     SceneModel*                 m_model     = nullptr;
     SnapshotCache*              m_snapshots = nullptr;
@@ -59,6 +64,12 @@ private:
     QGraphicsRectItem*          m_stage     = nullptr;
     QHash<QString, LayerItem*>  m_items;    // layerId -> item
     bool                        m_syncingSel = false;
+    // 인라인 텍스트 편집기 — 씬 원생 QGraphicsTextItem 을 사용해 뷰 스케일에
+    // 관계없이 LayerItem 과 동일 폰트 크기로 렌더. 편집 완료(포커스 이탈/Esc)
+    // 시 숨김. 배경은 별도 QGraphicsRectItem 으로 뒷단에 그린다.
+    InlineTextEditor*           m_editText = nullptr;
+    QGraphicsRectItem*          m_editBg   = nullptr;
+    QString                     m_editingTextId;
 };
 
 } // namespace uwp

@@ -4,21 +4,54 @@
 #include "scene/SceneModel.h"
 #include "player/SnapshotCache.h"
 
+#include <QEvent>
+#include <QFocusEvent>
 #include <QGraphicsScene>
 #include <QGraphicsRectItem>
+#include <QGraphicsTextItem>
+#include <QKeyEvent>
 #include <QMimeData>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QWheelEvent>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QTextCursor>
+#include <QTextDocument>
+#include <QTextOption>
 #include <QUrl>
 #include <QFileInfo>
 #include <QDebug>
 
+#include <functional>
+
 namespace uwp {
 
 static const char* kMediaMime = "application/x-uwp-media-path";
+
+// 씬 원생 텍스트 편집기 — QPlainTextEdit + QGraphicsProxyWidget 은 뷰 스케일
+// 아래에서 폰트가 축소 렌더돼 편집 중 텍스트가 사라진 것처럼 보이는 회귀가
+// 있다. QGraphicsTextItem 은 씬 좌표계에서 QPainter 로 직접 그리므로
+// LayerItem 과 동일한 스케일·폰트 로 렌더된다.
+class InlineTextEditor : public QGraphicsTextItem {
+public:
+    InlineTextEditor() = default;
+    std::function<void()> onCommit;
+    std::function<void()> onCancel;
+
+protected:
+    void focusOutEvent(QFocusEvent* e) override {
+        QGraphicsTextItem::focusOutEvent(e);
+        if (onCommit) onCommit();
+    }
+    void keyPressEvent(QKeyEvent* e) override {
+        if (e->key() == Qt::Key_Escape) {
+            if (onCancel) onCancel();
+            return;
+        }
+        QGraphicsTextItem::keyPressEvent(e);
+    }
+};
 
 PreviewCanvas::PreviewCanvas(SceneModel* model, SnapshotCache* snapshots,
                              QWidget* parent)
@@ -115,11 +148,116 @@ void PreviewCanvas::wheelEvent(QWheelEvent* e) {
 }
 
 void PreviewCanvas::mousePressEvent(QMouseEvent* e) {
+    // 인라인 편집 중 다른 곳 클릭 → 편집 확정. (편집기 아이템 자체 클릭은
+    // 편집기가 먼저 잡고 focusOut 이 발생하지 않으므로 여기서 확정하지 않음.)
+    if (m_editText && m_editText->isVisible()) {
+        const QGraphicsItem* hit = itemAt(e->pos());
+        if (hit != m_editText && hit != m_editBg) {
+            endTextEdit(true);
+        }
+    }
     QGraphicsView::mousePressEvent(e);
     // 빈 영역(스테이지/배경) 클릭 → 선택 해제
     if (!e->isAccepted() || itemAt(e->pos()) == m_stage || itemAt(e->pos()) == nullptr) {
         m_model->select(QString());
     }
+}
+
+void PreviewCanvas::mouseDoubleClickEvent(QMouseEvent* e) {
+    // 텍스트 레이어 더블클릭 → 캔버스 내 인라인 편집 시작.
+    //   대상 아이템이 m_items 중 하나이고, 해당 Layer 가 Text 타입이면 진입.
+    if (QGraphicsItem* it = itemAt(e->pos())) {
+        for (auto iter = m_items.begin(); iter != m_items.end(); ++iter) {
+            if (static_cast<QGraphicsItem*>(iter.value()) == it) {
+                const Layer* l = m_model->layer(iter.key());
+                if (l && l->mediaType == MediaType::Text) {
+                    beginTextEdit(iter.key());
+                    e->accept();
+                    return;
+                }
+                break;
+            }
+        }
+    }
+    QGraphicsView::mouseDoubleClickEvent(e);
+}
+
+void PreviewCanvas::beginTextEdit(const QString& layerId) {
+    const Layer* l = m_model->layer(layerId);
+    if (!l) return;
+
+    // 최초 진입 시 씬 아이템 생성. bg 는 QGraphicsRectItem, 텍스트는
+    // QGraphicsTextItem 서브클래스(InlineTextEditor) — 씬 원생 렌더로
+    // 뷰 스케일에 관계없이 LayerItem 과 동일한 폰트로 표시.
+    if (!m_editBg) {
+        m_editBg = m_scene->addRect(QRectF(), QPen(QColor("#f59e0b"), 2));
+        m_editBg->setZValue(1e6);
+        m_editBg->setVisible(false);
+    }
+    if (!m_editText) {
+        m_editText = new InlineTextEditor;
+        m_editText->onCommit = [this]{ endTextEdit(true);  };
+        m_editText->onCancel = [this]{ endTextEdit(false); };
+        m_editText->setTextInteractionFlags(Qt::TextEditorInteraction);
+        m_editText->setZValue(1e6 + 1);
+        m_scene->addItem(m_editText);
+        m_editText->document()->setDocumentMargin(0);
+        m_editText->setVisible(false);
+    }
+
+    m_editingTextId = layerId;
+
+    // 배경 rect — 레이어 geometry 전체에 채움 + 앰버 테두리(편집 중임 표시).
+    QColor bg(l->bgColor);
+    bg.setAlphaF(qBound(0.0, l->bgOpacity, 1.0));
+    m_editBg->setRect(l->geometry);
+    m_editBg->setBrush(bg);
+    m_editBg->setVisible(true);
+
+    // 텍스트 아이템 — 폰트/색/정렬을 레이어와 동일하게.
+    QFont f(l->fontFamily);
+    f.setPixelSize(qMax(1, l->fontSize));
+    f.setWeight(l->fontWeight >= 700 ? QFont::Bold : QFont::Normal);
+    m_editText->setFont(f);
+    m_editText->setDefaultTextColor(QColor(l->textColor));
+
+    QTextOption opt = m_editText->document()->defaultTextOption();
+    switch (l->textAlign) {
+        case 0: opt.setAlignment(Qt::AlignLeft);    break;
+        case 2: opt.setAlignment(Qt::AlignRight);   break;
+        default: opt.setAlignment(Qt::AlignHCenter);
+    }
+    m_editText->document()->setDefaultTextOption(opt);
+    m_editText->setPlainText(l->text);
+
+    // 위치: 레이어 (x,y) + padding, 텍스트 폭은 레이어 폭 - 좌우 padding.
+    const int pad = qMax(0, l->padding);
+    m_editText->setTextWidth(qMax(1.0, l->geometry.width() - 2.0 * pad));
+    m_editText->setPos(l->geometry.x() + pad, l->geometry.y() + pad);
+    m_editText->setVisible(true);
+
+    // 하위 LayerItem 은 이중 렌더 방지 위해 숨김.
+    if (auto* it = m_items.value(layerId, nullptr))
+        it->setVisible(false);
+
+    m_editText->setFocus(Qt::MouseFocusReason);
+    // 모든 텍스트 선택 — 기본값("텍스트를 입력하세요")을 즉시 대체 편집.
+    QTextCursor cursor(m_editText->document());
+    cursor.select(QTextCursor::Document);
+    m_editText->setTextCursor(cursor);
+}
+
+void PreviewCanvas::endTextEdit(bool commit) {
+    if (m_editingTextId.isEmpty()) return;
+    if (commit && m_editText) {
+        m_model->setText(m_editingTextId, m_editText->toPlainText());
+    }
+    if (auto* it = m_items.value(m_editingTextId, nullptr))
+        it->setVisible(true);
+    if (m_editText) m_editText->setVisible(false);
+    if (m_editBg)   m_editBg->setVisible(false);
+    m_editingTextId.clear();
+    setFocus(Qt::MouseFocusReason);
 }
 
 // ---- drag & drop ----------------------------------------------

@@ -67,7 +67,10 @@ QString SceneModel::addTextLayer(const QString& initialText,
     } else {
         const int w = m_canvas.width();
         const int h = m_canvas.height();
-        const int boxH = qMax(80, h / 6);      // 캔버스 높이 1/6, 최소 80
+        // 레이어 세로 = 텍스트 크기의 약 250% (padding 이 실제 여백처럼 보이도록).
+        //   fontSize 는 Layer 기본값(48) 사용. 사용자가 fontSize 를 크게 바꾸면
+        //   레이어를 함께 리사이즈해야 하지만, 초기 자막 UX 로는 이 비율이 적정.
+        const int boxH = qMax(60, qRound(l.fontSize * 2.5));
         l.geometry = QRectF(0, h - boxH - h / 20, w, boxH);
     }
     l.zIndex    = m_layers.size();   // 맨 위

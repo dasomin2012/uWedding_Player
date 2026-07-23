@@ -41,7 +41,7 @@ struct Layer {
     int       textVAlign     = 1;          // 0=Top,  1=Center, 2=Bottom
     QString   bgColor        = "#000000";  // 배경색
     double    bgOpacity      = 0.0;        // 0.0(투명) ~ 1.0
-    int       padding        = 24;         // px
+    int       padding        = 8;          // px (신규 텍스트 레이어 기본값)
 };
 
 } // namespace uwp

@@ -167,11 +167,15 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
 
     m_bgOpacitySlider = new QSlider(Qt::Horizontal);
     m_bgOpacitySlider->setRange(0, 100);
-    m_bgOpacityReadout = new QLabel(tr("배경 투명도: 0%"));
+    m_bgOpacityReadout = new QLabel(QStringLiteral("0%"));
+    m_bgOpacityReadout->setMinimumWidth(36);
+    m_bgOpacityReadout->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
+    // 여백(padding) — UI 노출은 제거(레이어 크기 조정으로 WYSIWYG 대체).
+    //   Layer.padding 필드는 유지되며 저장·렌더러도 그대로 존중.
     m_textPadding = new QSpinBox;
     m_textPadding->setRange(0, 500);
-    m_textPadding->setSuffix(" px");
+    m_textPadding->hide();   // 참조는 남기되 폼에 추가하지 않음
 
     // 컨텐츠 내부 폼 — 라벨 폭 통일로 정돈감.
     auto* tf = new QFormLayout(m_textContent);
@@ -191,13 +195,13 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     tf->addRow(tr("정렬"), alignRow);
     tf->addRow(tr("글자색"), m_textColorBtn);
     tf->addRow(tr("배경색"), m_bgColorBtn);
-    auto* bgOpBox = new QVBoxLayout;
+    auto* bgOpBox = new QHBoxLayout;
     bgOpBox->setContentsMargins(0, 0, 0, 0);
-    bgOpBox->setSpacing(2);
-    bgOpBox->addWidget(m_bgOpacityReadout);
-    bgOpBox->addWidget(m_bgOpacitySlider);
+    bgOpBox->setSpacing(6);
+    bgOpBox->addWidget(m_bgOpacitySlider, 1);
+    bgOpBox->addWidget(m_bgOpacityReadout, 0);
     tf->addRow(tr("배경 투명도"), bgOpBox);
-    tf->addRow(tr("여백"), m_textPadding);
+    // (여백 필드 폼 노출 제거)
     // 접힘/노출 로직은 상위(ControlWindow)의 CollapsibleSection 담당.
     // PropertyPanel 은 값 로드/커밋만 처리.
 
@@ -313,7 +317,7 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     connect(m_bgColorBtn, &QPushButton::clicked,
             this, &PropertyPanel::pickBgColor);
     connect(m_bgOpacitySlider, &QSlider::valueChanged, this, [this](int v) {
-        m_bgOpacityReadout->setText(QString(tr("배경 투명도: %1%")).arg(v));
+        m_bgOpacityReadout->setText(QString(QStringLiteral("%1%")).arg(v));
         if (m_loading || m_id.isEmpty()) return;
         m_model->setBgOpacity(m_id, v / 100.0);
     });
@@ -415,7 +419,7 @@ void PropertyPanel::loadFrom(const QString& id) {
         applySwatch(m_bgColorBtn,   QColor(l->bgColor));
         const int bgPct = qBound(0, qRound(l->bgOpacity * 100.0), 100);
         m_bgOpacitySlider->setValue(bgPct);
-        m_bgOpacityReadout->setText(QString(tr("배경 투명도: %1%")).arg(bgPct));
+        m_bgOpacityReadout->setText(QString(QStringLiteral("%1%")).arg(bgPct));
         m_textPadding->setValue(l->padding);
     }
     m_loading = false;

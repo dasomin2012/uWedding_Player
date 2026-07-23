@@ -108,6 +108,15 @@ QFrame#CollapsibleSection {
     border: 1px solid #dcd3c6;
     border-radius: 10px;
 }
+QPlainTextEdit, QTextEdit {
+    background: #ffffff;
+    color: #1c1512;
+    border: 1px solid #d3c8b8;
+    border-radius: 4px;
+    padding: 4px;
+    selection-background-color: #b98a5e;
+    selection-color: #ffffff;
+}
 QFrame#CollapsibleHeader {
     background: transparent;
     border-bottom: 1px solid #ece4d6;
@@ -394,6 +403,15 @@ QFrame#CollapsibleSection {
     background: #1e1a17;
     border: 1px solid #2c2620;
     border-radius: 10px;
+}
+QPlainTextEdit, QTextEdit {
+    background: #26211c;
+    color: #e8ddd0;
+    border: 1px solid #3a322c;
+    border-radius: 4px;
+    padding: 4px;
+    selection-background-color: #c8a37a;
+    selection-color: #1c1512;
 }
 QFrame#CollapsibleHeader {
     background: transparent;
