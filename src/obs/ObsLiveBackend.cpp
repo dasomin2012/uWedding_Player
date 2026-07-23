@@ -385,76 +385,43 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
             const int itemId = d.value("sceneItemId").toInt();
 
             // ─────────────────────────────────────────────────────────
-            // OBS 32.x 의 obs-websocket 은 sceneItemTransform 에서 boundsType
-            // 을 STRETCH 로 요청해도 실제 렌더는 SCALE_INNER(레터박스)로
-            // 처리되는 케이스가 관찰됨(진단 확인). 우회: source 의 원본 픽셀
-            // 크기(sourceWidth/Height)를 GetSceneItemTransform 으로 조회한 뒤
-            // 원하는 최종 크기에 맞춰 명시 scale 로 setter 한다. bounds 는
-            // NONE 로 두어 OBS 의 bounds 해석 로직에서 벗어난다 → Preview 와
-            // 픽셀 1:1 일치.
-            //
-            // sourceSize 는 source 가 로드되기 전에는 0. 로드까지 짧은 재시도.
+            // STRETCH-first: OBS_BOUNDS_STRETCH 로 즉시 배치 → source 로드
+            // 완료를 기다릴 필요가 없어 TAKE 지연이 사실상 사라진다.
+            //   과거 우회(sourceSize 조회 + 명시 scale)는 STRETCH 가 SCALE_INNER
+            //   로 잘못 해석되는 사례를 위한 것이었으나, 실 테스트에서 최신
+            //   OBS 32.1.2 는 STRETCH 를 정상 해석 (16:9 → 16:9, 3.7:1 → 3.7:1
+            //   모두 확인).  종횡비 비틀림 발생 시엔 별도 옵션으로 명시 scale
+            //   경로를 재도입할 수 있으나, 현재는 즉시 전환을 우선.
             // ─────────────────────────────────────────────────────────
-            auto applyScale = std::make_shared<std::function<void(int)>>();
-            *applyScale = [this, scene, inputName, itemId, i, L, next, applyScale]
-                          (int retries) {
-                ObsClient* cq = client();
-                if (!cq) { next(); return; }
-                QJsonObject q;
-                q["sceneName"]   = scene;
-                q["sceneItemId"] = itemId;
-                cq->request(QStringLiteral("GetSceneItemTransform"), q,
-                    [this, scene, inputName, itemId, i, L, next, applyScale, retries]
-                    (bool ok, const QJsonObject& r, const QString&) {
-                        if (!ok) { next(); return; }
-                        const auto t = r.value("sceneItemTransform").toObject();
-                        const double sw = t.value("sourceWidth").toDouble();
-                        const double sh = t.value("sourceHeight").toDouble();
-                        if ((sw <= 0.0 || sh <= 0.0) && retries > 0) {
-                            // source 아직 미로드 → 100ms 후 재시도.
-                            QTimer::singleShot(100, this,
-                                [applyScale, retries] { (*applyScale)(retries - 1); });
-                            return;
-                        }
-                        ObsClient* cs = client();
-                        if (!cs) { next(); return; }
-                        QJsonObject tr2;
-                        tr2["positionX"]  = L.geometry.x();
-                        tr2["positionY"]  = L.geometry.y();
-                        tr2["alignment"]  = 5;  // top-left
-                        tr2["boundsType"] = QStringLiteral("OBS_BOUNDS_NONE");
-                        if (sw > 0.0 && sh > 0.0) {
-                            tr2["scaleX"] = L.geometry.width()  / sw;
-                            tr2["scaleY"] = L.geometry.height() / sh;
-                        } else {
-                            // 최후 폴백 — sourceSize 조회 실패. 원본 크기 그대로 배치.
-                            tr2["scaleX"] = 1.0;
-                            tr2["scaleY"] = 1.0;
-                        }
-                        qInfo() << "ObsLiveBackend: layer" << inputName
-                                << "sourceSize=" << sw << "x" << sh
-                                << "→ scale=" << tr2["scaleX"].toDouble()
-                                << "x" << tr2["scaleY"].toDouble();
+            ObsClient* cs = client();
+            if (!cs) { next(); return; }
+            QJsonObject tr2;
+            tr2["positionX"]       = L.geometry.x();
+            tr2["positionY"]       = L.geometry.y();
+            tr2["alignment"]       = 5;   // top-left
+            tr2["boundsType"]      = QStringLiteral("OBS_BOUNDS_STRETCH");
+            tr2["boundsAlignment"] = 0;   // top-left
+            tr2["boundsWidth"]     = L.geometry.width();
+            tr2["boundsHeight"]    = L.geometry.height();
 
-                        QJsonObject st2;
-                        st2["sceneName"]          = scene;
-                        st2["sceneItemId"]        = itemId;
-                        st2["sceneItemTransform"] = tr2;
-                        cs->request(QStringLiteral("SetSceneItemTransform"), st2,
-                            [this, scene, inputName, itemId, i, L, next]
-                            (bool, const QJsonObject&, const QString&) {
-                                ObsClient* c3 = client();
-                                if (!c3) { next(); return; }
-                                QJsonObject idx;
-                                idx["sceneName"]      = scene;
-                                idx["sceneItemId"]    = itemId;
-                                idx["sceneItemIndex"] = i;
-                                c3->request(QStringLiteral("SetSceneItemIndex"), idx,
+            QJsonObject st2;
+            st2["sceneName"]          = scene;
+            st2["sceneItemId"]        = itemId;
+            st2["sceneItemTransform"] = tr2;
+            cs->request(QStringLiteral("SetSceneItemTransform"), st2,
+                [this, scene, inputName, itemId, i, L, next]
+                (bool, const QJsonObject&, const QString&) {
+                    ObsClient* c3 = client();
+                    if (!c3) { next(); return; }
+                    QJsonObject idx;
+                    idx["sceneName"]      = scene;
+                    idx["sceneItemId"]    = itemId;
+                    idx["sceneItemIndex"] = i;
+                    c3->request(QStringLiteral("SetSceneItemIndex"), idx,
                         [this, inputName, L, next]
                         (bool, const QJsonObject&, const QString&) {
                             ObsClient* c4 = client();
                             // opacity best-effort: 입력에 색보정 필터 추가.
-                            // 필터 종류는 OBS 버전 의존 → 실패해도 무시.
                             if (c4 && L.opacity < 0.999) {
                                 QJsonObject fs; fs["opacity"] = L.opacity;
                                 QJsonObject f;
@@ -470,10 +437,6 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
                             next();
                         });   // end SetSceneItemIndex callback
                 });           // end SetSceneItemTransform callback
-        });                   // end GetSceneItemTransform callback
-            };                // end applyScale lambda body
-            // source 로드 대기 최대 ~1s (100ms × 10회 재시도).
-            (*applyScale)(10);
         });                   // end CreateInput callback
 }
 
