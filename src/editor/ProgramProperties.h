@@ -7,6 +7,7 @@
 
 class QLineEdit;
 class QComboBox;
+class QPushButton;
 
 namespace uwp {
 
@@ -22,16 +23,22 @@ class ProgramProperties : public QWidget {
 public:
     explicit ProgramProperties(QWidget* parent = nullptr);
 
-    void setProgram(const Program* program);
+    // programIndex/programCount 는 앞/뒤로 버튼 활성 판단용 (경계 도달 시 비활성).
+    void setProgram(const Program* program,
+                    int programIndex = -1, int programCount = 0);
 
 signals:
     void renameRequested(const QString& newName);
     void endActionChanged(EndAction action);
+    void moveUpRequested();     // 앞으로 (index 감소)
+    void moveDownRequested();   // 뒤로 (index 증가)
 
 private:
-    QLineEdit* m_name      = nullptr;
-    QComboBox* m_endAction = nullptr;
-    bool       m_loading   = false;
+    QLineEdit*   m_name      = nullptr;
+    QComboBox*   m_endAction = nullptr;
+    QPushButton* m_btnUp     = nullptr;
+    QPushButton* m_btnDown   = nullptr;
+    bool         m_loading   = false;
 };
 
 } // namespace uwp

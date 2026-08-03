@@ -284,6 +284,10 @@ bool Application::initialize() {
                     m_programs->update(up);
                     m_programs->save(resolveProgramsPath());
                 });
+        connect(pp, &ProgramProperties::moveUpRequested,   this,
+                [this]{ moveEditProgram(-1); });
+        connect(pp, &ProgramProperties::moveDownRequested, this,
+                [this]{ moveEditProgram(+1); });
     }
     // 부재 시 빈 리스트로 시작(에러 아님). 손상 시 .bak 백업 후 빈 리스트.
     m_programs->load(resolveProgramsPath());
@@ -914,7 +918,10 @@ void Application::onProgramSelected(const QString& id) {
         pgl->setProgram(p, dataDir());
         pgl->setActivePage(m_editPageId);
     }
-    if (auto* pp = m_controlWindow->programProperties()) pp->setProgram(p);
+    if (auto* pp = m_controlWindow->programProperties()) {
+        const int pIdx = m_programs->indexOf(id);
+        pp->setProgram(p, pIdx, m_programs->programs().size());
+    }
     if (auto* pp = m_controlWindow->pageProperties())
         pp->setPage(&p->pages.first(), 0, p->pages.size());
     m_controlWindow->setPreviewDisplayTime(p->pages.first().displayTimeSec);
@@ -1567,6 +1574,26 @@ void Application::onPageRenameRequested(const QString& pageId,
         const Program* np = m_programs->find(m_editProgramId);
         if (np) { pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId); }
     }
+}
+
+void Application::moveEditProgram(int delta) {
+    if (m_editProgramId.isEmpty() || !m_programs) return;
+    const int from = m_programs->indexOf(m_editProgramId);
+    if (from < 0) return;
+    const int to = from + delta;
+    const int total = m_programs->programs().size();
+    if (to < 0 || to >= total) return;   // 이미 경계
+    m_programs->reorder(from, to);
+    m_programs->save(resolveProgramsPath());
+    // 카드 리스트 재구성은 programsReloaded 시그널 → 기존 핸들러가 처리하지만,
+    // ProgramProperties 의 앞/뒤로 버튼 활성 상태는 새 인덱스로 재계산.
+    if (auto* pp = m_controlWindow->programProperties()) {
+        const Program* np = m_programs->find(m_editProgramId);
+        pp->setProgram(np, to, total);
+    }
+    // 편집중 프로그램의 새 위치를 리스트에서도 시각 반영.
+    if (auto* pl = m_controlWindow->programList())
+        pl->selectProgram(m_editProgramId);
 }
 
 void Application::onPageMoveUpRequested(const QString& pageId) {

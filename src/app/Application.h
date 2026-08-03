@@ -87,6 +87,10 @@ private:
     QString dataDir() const;                         // <appDir>/data
     QString resolveProgramsPath() const;             // <appDir>/data/programs.json
 
+    // ProgramProperties 앞/뒤로 버튼 → 편집중 프로그램의 위치를 이동.
+    // delta = -1 (앞으로) / +1 (뒤로).
+    void moveEditProgram(int delta);
+
     // Phase 5b — 편집 자동저장 (현재 편집 대상 program 으로 binding)
     void scheduleEditSave();                         // 씬 변경 → 디바운스 타이머 재시작
     void persistEditProgram();                       // 편집 대상에 layers+썸네일 저장
