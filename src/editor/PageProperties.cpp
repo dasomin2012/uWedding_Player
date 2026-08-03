@@ -32,8 +32,9 @@ PageProperties::PageProperties(QWidget* parent)
                 emit displayTimeChanged(v);
             });
 
-    m_btnUp   = new QPushButton(tr("↑ 위로"));
-    m_btnDown = new QPushButton(tr("↓ 아래로"));
+    // 페이지 카드는 좌→우 가로 스트립이므로 "위/아래" 대신 "앞/뒤" 사용.
+    m_btnUp   = new QPushButton(tr("◀ 앞으로"));
+    m_btnDown = new QPushButton(tr("뒤로 ▶"));
     connect(m_btnUp,   &QPushButton::clicked, this, [this]{
         if (!m_loading) emit moveUpRequested();
     });
@@ -49,10 +50,15 @@ PageProperties::PageProperties(QWidget* parent)
     moveRow->addWidget(m_btnUp);
     moveRow->addWidget(m_btnDown);
 
+    auto* moveLabel = new QLabel(tr("페이지 이동"));
+    moveLabel->setStyleSheet("font-weight: bold;");
+
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(8, 6, 8, 8);
     root->setSpacing(6);
     root->addLayout(form);
+    root->addSpacing(4);
+    root->addWidget(moveLabel);
     root->addLayout(moveRow);
     root->addStretch(1);
 

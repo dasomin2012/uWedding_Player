@@ -1581,9 +1581,16 @@ void Application::onPageMoveUpRequested(const QString& pageId) {
     up.thumbnailRelPath = up.pages.first().thumbnailRelPath;
     m_programs->update(up);
     m_programs->save(resolveProgramsPath());
+    const Program* np = m_programs->find(m_editProgramId);
+    if (!np) return;
     if (auto* pgl = m_controlWindow->pageList()) {
-        const Program* np = m_programs->find(m_editProgramId);
-        if (np) { pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId); }
+        pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId);
+    }
+    // 이동 후 새 인덱스로 PageProperties 갱신 — 경계(첫/마지막) 도달 시
+    // 앞/뒤 버튼 활성 상태 재계산.
+    if (auto* pp = m_controlWindow->pageProperties()) {
+        const int newIdx = idx - 1;
+        pp->setPage(&np->pages[newIdx], newIdx, np->pages.size());
     }
 }
 
@@ -1598,9 +1605,14 @@ void Application::onPageMoveDownRequested(const QString& pageId) {
     up.thumbnailRelPath = up.pages.first().thumbnailRelPath;
     m_programs->update(up);
     m_programs->save(resolveProgramsPath());
+    const Program* np = m_programs->find(m_editProgramId);
+    if (!np) return;
     if (auto* pgl = m_controlWindow->pageList()) {
-        const Program* np = m_programs->find(m_editProgramId);
-        if (np) { pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId); }
+        pgl->setProgram(np, dataDir()); pgl->setActivePage(m_editPageId);
+    }
+    if (auto* pp = m_controlWindow->pageProperties()) {
+        const int newIdx = idx + 1;
+        pp->setPage(&np->pages[newIdx], newIdx, np->pages.size());
     }
 }
 
