@@ -131,6 +131,8 @@ set(UWP_SOURCES
     src/player/ImageWidget.cpp
     src/player/TextWidget.h
     src/player/TextWidget.cpp
+    src/player/AudioPlayer.h
+    src/player/AudioPlayer.cpp
 
     src/live/ILiveSink.h
 

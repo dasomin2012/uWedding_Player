@@ -4,6 +4,7 @@
 #include "windows/DisplaySettingsDialog.h"
 #include "windows/LiveWindow.h"
 #include "live/ILiveSink.h"
+#include "player/AudioPlayer.h"
 #include "player/LivePlayerPool.h"
 #include "player/SnapshotCache.h"
 #include "scene/SceneModel.h"
@@ -125,6 +126,16 @@ bool Application::initialize() {
     // ----- 미디어 서브시스템 (윈도우보다 먼저, 더 오래 살아야 함) -----
     m_playerPool    = std::make_unique<LivePlayerPool>();
     m_snapshotCache = std::make_unique<SnapshotCache>(&m_settings);
+
+    // ----- BGM 재생기 (프로그램 단위) -----
+    m_audio = std::make_unique<AudioPlayer>();
+    // 저장된 오디오 출력 장치 복원.
+    {
+        QSettings qs(QStringLiteral("Hanmac"), QStringLiteral("uWeddingPlayer"));
+        const QString dev = qs.value(
+            QStringLiteral("audio/outputDevice")).toString();
+        if (!dev.isEmpty()) m_audio->setOutput(dev);
+    }
 
     // ----- 씬 모델 (편집 단일 진실 소스) -----
     m_scene = std::make_unique<SceneModel>();
@@ -286,6 +297,54 @@ bool Application::initialize() {
                 [this]{ moveEditProgram(-1); });
         connect(pp, &ProgramProperties::moveDownRequested, this,
                 [this]{ moveEditProgram(+1); });
+        // BGM 편집 — 즉시 저장. 현재 재생중이면 재생 파라미터 즉시 반영.
+        connect(pp, &ProgramProperties::bgmPathChanged, this,
+                [this](const QString& path){
+                    if (m_editProgramId.isEmpty()) return;
+                    const Program* p = m_programs->find(m_editProgramId);
+                    if (!p) return;
+                    Program up = *p;
+                    up.bgmPath = path;
+                    m_programs->update(up);
+                    m_programs->save(resolveProgramsPath());
+                    if (m_currentProgramId == m_editProgramId) applyBgmFor(up);
+                });
+        connect(pp, &ProgramProperties::bgmVolumeChanged, this,
+                [this](int vol){
+                    if (m_editProgramId.isEmpty()) return;
+                    const Program* p = m_programs->find(m_editProgramId);
+                    if (!p) return;
+                    Program up = *p;
+                    up.bgmVolume = vol;
+                    m_programs->update(up);
+                    m_programs->save(resolveProgramsPath());
+                    if (m_currentProgramId == m_editProgramId && m_audio)
+                        m_audio->setVolume(vol);
+                });
+        connect(pp, &ProgramProperties::bgmLoopChanged, this,
+                [this](bool loop){
+                    if (m_editProgramId.isEmpty()) return;
+                    const Program* p = m_programs->find(m_editProgramId);
+                    if (!p) return;
+                    Program up = *p;
+                    up.bgmLoop = loop;
+                    m_programs->update(up);
+                    m_programs->save(resolveProgramsPath());
+                    // loop 갱신은 다음 play 부터 반영 (재생 중 실시간 반영 제한).
+                });
+        // 오디오 출력 장치 변경 — 전역 세팅 (QSettings audio/outputDevice).
+        connect(pp, &ProgramProperties::audioOutputChanged, this,
+                [this](const QString& id){
+                    if (m_audio) m_audio->setOutput(id);
+                    QSettings qs(QStringLiteral("Hanmac"),
+                                 QStringLiteral("uWeddingPlayer"));
+                    qs.setValue(QStringLiteral("audio/outputDevice"), id);
+                });
+        // 시스템 오디오 장치 목록을 위젯에 전달 (버튼 활성 판단).
+        if (m_audio) {
+            pp->setAudioOutputs(m_audio->availableOutputs(),
+                                m_audio->currentOutput());
+        }
     }
     // 부재 시 빈 리스트로 시작(에러 아님). 손상 시 .bak 백업 후 빈 리스트.
     m_programs->load(resolveProgramsPath());
@@ -956,7 +1015,23 @@ void Application::playProgram(const QString& id) {
     m_playbackPaused = false;
     m_controlWindow->setLiveState(ControlWindow::LiveState::Playing);
 
+    // 프로그램 단위 BGM — 페이지 전환과 독립적으로 계속 재생.
+    applyBgmFor(*p);
+
     playPageAt(p, 0);                   // 첫 페이지부터 재생
+}
+
+void Application::applyBgmFor(const Program& p) {
+    if (!m_audio) return;
+    if (p.bgmPath.isEmpty()) {
+        m_audio->stop();
+        return;
+    }
+    m_audio->play(p.bgmPath, p.bgmVolume, p.bgmLoop);
+}
+
+void Application::stopBgm() {
+    if (m_audio) m_audio->stop();
 }
 
 // 지정 페이지를 SceneModel 로 로드 → Live 송출 → 페이지 displayTime 으로 타이머.
@@ -1043,6 +1118,7 @@ void Application::onProgramAdvance() {
 void Application::stopProgramPlayback() {
     if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
     if (m_takeController) m_takeController->clearLive();   // Live 비움(검정), 편집 무영향
+    stopBgm();                                              // BGM 중지
     m_currentProgramId.clear();
     m_currentPageIdx = 0;
     if (auto* pl = m_controlWindow->programList())

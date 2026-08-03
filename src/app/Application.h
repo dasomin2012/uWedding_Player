@@ -18,6 +18,7 @@ class SceneModel;
 class TakeController;
 class NovaStarController;
 class ProgramRepository;
+class AudioPlayer;
 struct Program;   // UI-D Phase C — playPageAt 시그니처가 사용
 class ILiveSink;
 #if defined(UWP_HAS_OBS)
@@ -174,6 +175,12 @@ private:
     QTimer* m_liveMirrorTimer = nullptr;
     bool    m_liveMirrorInFlight = false;   // obs 비동기 응답 대기 중 중복 방지
     ILiveSink* currentLiveSink() const;     // engine + fallback 반영
+
+    // BGM 재생기 — 프로그램 단위 배경음. playProgram 시 시작, 다른 프로그램
+    //   전환/정지 시 stop.  편집(Preview) 중에는 재생하지 않음.
+    std::unique_ptr<AudioPlayer> m_audio;
+    void applyBgmFor(const Program& p);   // 파일/볼륨/loop 판단해 play 또는 stop
+    void stopBgm();
 };
 
 } // namespace uwp

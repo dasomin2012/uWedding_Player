@@ -31,6 +31,12 @@ struct Program {
     QString        novastarPresetId;    // 빈 문자열이면 settings.novastar.default_preset_id 폴백
     EndAction      endAction      = EndAction::Hold;   // 마지막 페이지 종료 후 (Program 레벨)
     QVector<Page>  pages          { Page{} };          // 최소 1페이지 invariant
+
+    // BGM — 프로그램 전체에 흐르는 배경음. TAKE 로 Live 진입 시 재생 시작,
+    //  다른 프로그램으로 TAKE 되거나 종료 시 정지. 페이지 전환과 독립.
+    QString        bgmPath;             // 절대 또는 상대 경로. 빈 문자열=미사용
+    int            bgmVolume     = 80;  // 0..100
+    bool           bgmLoop       = true;
 };
 
 } // namespace uwp

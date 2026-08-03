@@ -126,6 +126,12 @@ bool ProgramRepository::load(const QString& path) {
         p.thumbnailRelPath = o.value("thumbnail").toString();
         p.novastarPresetId = o.value("novastar_preset_id").toString();
         p.endAction        = endActionFromString(o.value("end_action").toString());
+        // BGM (신 필드, 없으면 기본값 유지)
+        p.bgmPath   = o.value("bgm_path").toString();
+        if (o.contains("bgm_volume"))
+            p.bgmVolume = qBound(0, o.value("bgm_volume").toInt(80), 100);
+        if (o.contains("bgm_loop"))
+            p.bgmLoop = o.value("bgm_loop").toBool(true);
         if (p.id.isEmpty()) continue;
 
         // UI-D Phase A: pages 배열 파싱. 구 포맷(program 레벨 layers +
@@ -174,6 +180,9 @@ bool ProgramRepository::save(const QString& path) const {
         o["thumbnail"]          = p.thumbnailRelPath;
         o["novastar_preset_id"] = p.novastarPresetId;
         o["end_action"]         = endActionToString(p.endAction);
+        o["bgm_path"]           = p.bgmPath;
+        o["bgm_volume"]         = p.bgmVolume;
+        o["bgm_loop"]           = p.bgmLoop;
 
         // UI-D Phase A: pages 배열로 저장. 구 포맷 layers/display_time_sec 은
         // 저장하지 않음 — 다음 load 부터는 순수 신 포맷.
