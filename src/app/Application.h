@@ -55,7 +55,6 @@ private slots:
     void onProgramPlayRequested(const QString& id);            // 더블클릭/Play: Take
     void onProgramRenameRequested(const QString& id, const QString& newName);
     void onProgramDeleteRequested(const QString& id);
-    void onProgramDisplayTimeEditRequested(const QString& id);
     void onProgramEndActionEditRequested(const QString& id);
 
     // UI-D Phase B — 페이지 관리 (현재 편집 대상 프로그램 안).

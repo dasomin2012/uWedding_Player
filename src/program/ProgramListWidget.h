@@ -51,10 +51,7 @@ signals:
     void deleteRequested(const QString& id);
     // 접힘 상태 변화 — ControlWindow 가 QSplitter 크기를 재배분.
     void collapseChanged(bool collapsed);
-    // 프로그램 단위 표시 시간 편집 요청. Application 이 현재값 조회 후
-    // 다이얼로그 표시(위젯이 프로그램 데이터를 직접 갖지 않음).
-    void displayTimeEditRequested(const QString& id);
-    // 프로그램 종료 동작(반복/정지/유지/다음) 편집 요청. displayTime 과 동일 패턴.
+    // 프로그램 종료 동작(반복/정지/유지/다음) 편집 요청.
     void endActionEditRequested(const QString& id);
 
 protected:

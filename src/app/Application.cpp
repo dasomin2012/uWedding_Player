@@ -223,8 +223,6 @@ bool Application::initialize() {
                 this, &Application::onProgramRenameRequested);
         connect(pl, &ProgramListWidget::deleteRequested,
                 this, &Application::onProgramDeleteRequested);
-        connect(pl, &ProgramListWidget::displayTimeEditRequested,
-                this, &Application::onProgramDisplayTimeEditRequested);
         connect(pl, &ProgramListWidget::endActionEditRequested,
                 this, &Application::onProgramEndActionEditRequested);
     }
@@ -1274,35 +1272,6 @@ void Application::onProgramEndActionEditRequested(const QString& id) {
     m_programs->save(resolveProgramsPath());
     // 재생 중 프로그램의 종료 동작이 바뀌어도 타이머는 그대로 — 만료 시
     // 새 endAction 이 자연스럽게 조회되어 적용된다(별도 재무장 불필요).
-}
-
-// 프로그램 카드 우클릭 → "표시 시간 설정..." — 현재값을 초기값으로 다이얼로그.
-// Phase A: 첫 페이지의 displayTimeSec 편집 (사실상 "프로그램 시간"과 동등).
-// Phase C 부터는 페이지별 편집 UI 별도 도입, 이 다이얼로그는 페이지 UI 없는
-// 상태의 편의 진입점으로 유지.
-void Application::onProgramDisplayTimeEditRequested(const QString& id) {
-    const Program* p = m_programs->find(id);
-    if (!p) return;
-    const int curSec = p->pages.first().displayTimeSec;
-    bool ok = false;
-    const int sec = QInputDialog::getInt(
-        m_controlWindow.get(),
-        tr("프로그램 표시 시간"),
-        tr("자동 진행 초 (0 = 수동 · 최대 86400):"),
-        curSec, 0, 86400, 1, &ok);
-    if (!ok || sec == curSec) return;
-    Program up = *p;
-    up.pages.first().displayTimeSec = sec;
-    m_programs->update(up);                   // → programUpdated → 카드 갱신
-    m_programs->save(resolveProgramsPath());
-    // 편집 대상이면 Preview 툴바 라벨/▶ 활성 즉시 갱신.
-    if (m_editProgramId == id)
-        m_controlWindow->setPreviewDisplayTime(sec);
-    // 재생중이면 새 시간으로 자동진행 타이머 재무장 (기존 남은 시간 무시하고 리셋).
-    if (m_currentProgramId == id && m_programAdvanceTimer) {
-        m_programAdvanceTimer->stop();
-        if (sec > 0) m_programAdvanceTimer->start(sec * 1000);
-    }
 }
 
 void Application::onProgramDeleteRequested(const QString& id) {
