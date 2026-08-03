@@ -1301,9 +1301,12 @@ void Application::onProgramDisplayTimeEditRequested(const QString& id) {
 void Application::onProgramDeleteRequested(const QString& id) {
     const Program* p = m_programs->find(id);
     if (!p) return;
-    // 삭제 확인 다이얼로그는 ProgramListWidget 쪽 한 곳에서만 처리(한글).
-    // 여기서는 remove 전 이름/썸네일 캡처(포인터 무효화 방지)만 하고 바로 진행.
-    const QString name  = p->name;
+    // 확인 다이얼로그는 여기서 처리 — X 버튼·Del 키 두 경로 통합.
+    const QString name  = p->name.isEmpty() ? id : p->name;
+    const auto reply = QMessageBox::question(
+        m_controlWindow.get(), tr("프로그램 삭제"),
+        tr("\"%1\" 을(를) 삭제할까요?").arg(name));
+    if (reply != QMessageBox::Yes) return;
     const QString thumb = p->thumbnailRelPath;
 
     if (!thumb.isEmpty()) QFile::remove(dataDir() + "/" + thumb);

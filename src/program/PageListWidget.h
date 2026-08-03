@@ -54,6 +54,10 @@ signals:
     // 타이틀 등에 반영. programName 은 프로그램 없을 때 빈 문자열.
     void programChanged(const QString& programName);
 
+protected:
+    // m_list 에 설치 — Del 키로 선택 페이지 삭제(X 버튼 클릭과 동등).
+    bool eventFilter(QObject* obj, QEvent* ev) override;
+
 private:
     void showContextMenu(const QPoint& pos);
 

@@ -10,6 +10,7 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -220,6 +221,9 @@ PageListWidget::PageListWidget(QWidget* parent)
     });
     connect(m_list, &QListWidget::customContextMenuRequested,
             this, &PageListWidget::showContextMenu);
+
+    // Del 키로 삭제 요청 — X 버튼(delegate)과 동일 시그널.
+    m_list->installEventFilter(this);
 }
 
 void PageListWidget::setProgram(const Program* program, const QString& dataDir) {
@@ -299,6 +303,20 @@ void PageListWidget::showContextMenu(const QPoint& pos) {
 
 void PageListWidget::setTitleVisible(bool visible) {
     if (m_titleLabel) m_titleLabel->setVisible(visible);
+}
+
+bool PageListWidget::eventFilter(QObject* obj, QEvent* ev) {
+    if (obj == m_list && ev->type() == QEvent::KeyPress) {
+        auto* ke = static_cast<QKeyEvent*>(ev);
+        if (ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) {
+            QListWidgetItem* it = m_list->currentItem();
+            if (it) {
+                emit deleteRequested(it->data(Qt::UserRole).toString());
+                return true;
+            }
+        }
+    }
+    return QWidget::eventFilter(obj, ev);
 }
 
 } // namespace uwp

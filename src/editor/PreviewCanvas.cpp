@@ -247,6 +247,22 @@ void PreviewCanvas::beginTextEdit(const QString& layerId) {
     m_editText->setTextCursor(cursor);
 }
 
+void PreviewCanvas::keyPressEvent(QKeyEvent* e) {
+    // 인라인 텍스트 편집 중엔 Del 이 문자 삭제 (편집기가 우선 처리).
+    //   편집기 아이템이 포커스를 갖고 있으면 QGraphicsView 기본 dispatch 가
+    //   그 아이템에 전달하므로 여기서 별도 처리 불필요.
+    if (m_editingTextId.isEmpty()
+        && (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace)) {
+        const QString id = m_model ? m_model->selectedId() : QString();
+        if (!id.isEmpty()) {
+            m_model->removeLayer(id);
+            e->accept();
+            return;
+        }
+    }
+    QGraphicsView::keyPressEvent(e);
+}
+
 void PreviewCanvas::endTextEdit(bool commit) {
     if (m_editingTextId.isEmpty()) return;
     if (commit && m_editText) {

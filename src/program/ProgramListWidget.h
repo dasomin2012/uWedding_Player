@@ -57,6 +57,10 @@ signals:
     // 프로그램 종료 동작(반복/정지/유지/다음) 편집 요청. displayTime 과 동일 패턴.
     void endActionEditRequested(const QString& id);
 
+protected:
+    // m_list 에 설치 — Del 키로 선택 프로그램 삭제(X 버튼과 동등).
+    bool eventFilter(QObject* obj, QEvent* ev) override;
+
 private:
     QString currentId() const;                  // 선택 아이템의 id ("" 가능)
     void    showContextMenu(const QPoint& pos);

@@ -11,6 +11,7 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
@@ -345,14 +346,10 @@ ProgramListWidget::ProgramListWidget(QWidget* parent)
     m_list->setMouseTracking(true);
     m_list->setItemDelegate(new ProgramCardDelegate(
         [this](int row){
+            // 확인 다이얼로그는 Application::onProgramDeleteRequested 로 통일 —
+            //  X 버튼·Del 키 모두 같은 확인 UX 를 갖도록.
             QListWidgetItem* it = m_list->item(row);
-            if (!it) return;
-            const QString id   = it->data(Qt::UserRole).toString();
-            const QString name = it->text().isEmpty() ? id : it->text();
-            const auto r = QMessageBox::question(
-                this, tr("프로그램 삭제"),
-                tr("\"%1\" 을(를) 삭제할까요?").arg(name));
-            if (r == QMessageBox::Yes) emit deleteRequested(id);
+            if (it) emit deleteRequested(it->data(Qt::UserRole).toString());
         }, m_list));
 
     // [카드 리스트 stretch=1  |  + 추가 (세로 중앙)]
@@ -380,8 +377,25 @@ ProgramListWidget::ProgramListWidget(QWidget* parent)
     connect(m_list, &QListWidget::customContextMenuRequested,
             this, &ProgramListWidget::showContextMenu);
 
+    // Del 키로 삭제 요청 — X 버튼(delegate)과 동일 시그널.
+    m_list->installEventFilter(this);
+
     // 초기 상태: 펼침 (setCollapsed 와 동일 계산치).
     setFixedHeight(180);
+}
+
+bool ProgramListWidget::eventFilter(QObject* obj, QEvent* ev) {
+    if (obj == m_list && ev->type() == QEvent::KeyPress) {
+        auto* ke = static_cast<QKeyEvent*>(ev);
+        if (ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) {
+            QListWidgetItem* it = m_list->currentItem();
+            if (it) {
+                emit deleteRequested(it->data(Qt::UserRole).toString());
+                return true;
+            }
+        }
+    }
+    return QWidget::eventFilter(obj, ev);
 }
 
 QString ProgramListWidget::currentId() const {

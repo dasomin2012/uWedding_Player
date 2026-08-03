@@ -40,6 +40,7 @@ protected:
     void dragEnterEvent(QDragEnterEvent* e) override;
     void dragMoveEvent(QDragMoveEvent* e) override;
     void dropEvent(QDropEvent* e) override;
+    void keyPressEvent(QKeyEvent* e) override;   // Del → 선택 레이어 삭제
 
 private slots:
     void onLayerAdded(const QString& id);
