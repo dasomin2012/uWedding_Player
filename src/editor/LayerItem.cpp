@@ -1,6 +1,10 @@
 #include "LayerItem.h"
 
+#include "PreviewCanvas.h"
 #include "scene/SceneModel.h"
+
+#include <QGraphicsScene>
+#include <QGraphicsView>
 
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
@@ -242,6 +246,94 @@ void LayerItem::mouseMoveEvent(QGraphicsSceneMouseEvent* e) {
         }
     }
 
+    // 정렬 스냅 — 캔버스 가장자리·중심 + 다른 레이어의 가장자리·중심.
+    //   임계값: 뷰 스케일에 반비례 (화면상 ~8px 정도 유지).
+    QList<qreal> activeGuideXs, activeGuideYs;
+    if (m_model) {
+        qreal viewScale = 1.0;
+        if (scene() && !scene()->views().isEmpty()) {
+            viewScale = qMax<qreal>(0.0001,
+                scene()->views().first()->transform().m11());
+        }
+        const qreal SNAP = 8.0 / viewScale;   // 씬 좌표 임계값
+
+        const QSize cs = m_model->canvasSize();
+        QVector<qreal> snapXs, snapYs;
+        snapXs << 0.0 << cs.width() / 2.0 << (qreal)cs.width();
+        snapYs << 0.0 << cs.height() / 2.0 << (qreal)cs.height();
+        for (const Layer& other : m_model->layers()) {
+            if (other.id == m_id) continue;
+            snapXs << other.geometry.left()   << other.geometry.right()
+                   << other.geometry.center().x();
+            snapYs << other.geometry.top()    << other.geometry.bottom()
+                   << other.geometry.center().y();
+        }
+
+        // 가장 가까운 스냅 x/y 를 찾는 helper.
+        auto bestSnap = [](const QVector<qreal>& targets,
+                           const QVector<qreal>& edges, qreal thresh,
+                           qreal& outDelta, qreal& outAt) -> bool {
+            qreal best = thresh;
+            for (qreal t : targets) {
+                for (qreal e : edges) {
+                    const qreal d = qAbs(t - e);
+                    if (d < best) { best = d; outDelta = t - e; outAt = t; }
+                }
+            }
+            return best < thresh;
+        };
+
+        // 이동/리사이즈 별로 "움직이는 변" 지정 후 스냅.
+        QVector<qreal> movingXs, movingYs;
+        if (m_drag == Body) {
+            movingXs << r.left() << r.right() << r.center().x();
+            movingYs << r.top()  << r.bottom() << r.center().y();
+        } else {
+            switch (m_drag) {
+                case L:  movingXs << r.left(); break;
+                case R:  movingXs << r.right(); break;
+                case T:  movingYs << r.top(); break;
+                case B:  movingYs << r.bottom(); break;
+                case TL: movingXs << r.left();  movingYs << r.top();    break;
+                case TR: movingXs << r.right(); movingYs << r.top();    break;
+                case BL: movingXs << r.left();  movingYs << r.bottom(); break;
+                case BR: movingXs << r.right(); movingYs << r.bottom(); break;
+                default: break;
+            }
+        }
+
+        qreal dx = 0, dy = 0, ax = 0, ay = 0;
+        if (bestSnap(snapXs, movingXs, SNAP, dx, ax)) {
+            if (m_drag == Body) r.translate(dx, 0);
+            else {
+                // 리사이즈: 움직이는 변만 이동.
+                if (m_drag == L || m_drag == TL || m_drag == BL)
+                    r.setLeft(r.left() + dx);
+                else
+                    r.setRight(r.right() + dx);
+            }
+            activeGuideXs << ax;
+        }
+        if (bestSnap(snapYs, movingYs, SNAP, dy, ay)) {
+            if (m_drag == Body) r.translate(0, dy);
+            else {
+                if (m_drag == T || m_drag == TL || m_drag == TR)
+                    r.setTop(r.top() + dy);
+                else
+                    r.setBottom(r.bottom() + dy);
+            }
+            activeGuideYs << ay;
+        }
+        if (r.width()  < 8) r.setWidth(8);
+        if (r.height() < 8) r.setHeight(8);
+
+        // 캔버스 뷰에 가이드 위치 전달.
+        if (scene() && !scene()->views().isEmpty()) {
+            if (auto* pc = qobject_cast<PreviewCanvas*>(scene()->views().first()))
+                pc->showSnapGuides(activeGuideXs, activeGuideYs);
+        }
+    }
+
     prepareGeometryChange();
     m_w = r.width();
     m_h = r.height();
@@ -254,6 +346,11 @@ void LayerItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* e) {
     if (m_drag != None) {
         commitToModel();
         m_drag = None;
+        // 스냅 가이드 정리.
+        if (scene() && !scene()->views().isEmpty()) {
+            if (auto* pc = qobject_cast<PreviewCanvas*>(scene()->views().first()))
+                pc->clearSnapGuides();
+        }
     }
     e->accept();
 }

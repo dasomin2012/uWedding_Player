@@ -132,6 +132,37 @@ void PreviewCanvas::drawBackground(QPainter* p, const QRectF& rect) {
     QGraphicsView::drawBackground(p, rect);
 }
 
+void PreviewCanvas::drawForeground(QPainter* p, const QRectF& rect) {
+    QGraphicsView::drawForeground(p, rect);
+    if (m_guideXs.isEmpty() && m_guideYs.isEmpty()) return;
+    p->save();
+    QPen pen(QColor(0xf5, 0x9e, 0x0b));   // 앰버 — pill 색과 통일
+    pen.setCosmetic(true);                 // 뷰 스케일 무관 1px 두께
+    pen.setWidth(1);
+    pen.setStyle(Qt::DashLine);
+    p->setPen(pen);
+    for (qreal x : m_guideXs)
+        p->drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()));
+    for (qreal y : m_guideYs)
+        p->drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y));
+    p->restore();
+}
+
+void PreviewCanvas::showSnapGuides(const QList<qreal>& xs,
+                                    const QList<qreal>& ys) {
+    if (m_guideXs == xs && m_guideYs == ys) return;
+    m_guideXs = xs;
+    m_guideYs = ys;
+    viewport()->update();
+}
+
+void PreviewCanvas::clearSnapGuides() {
+    if (m_guideXs.isEmpty() && m_guideYs.isEmpty()) return;
+    m_guideXs.clear();
+    m_guideYs.clear();
+    viewport()->update();
+}
+
 void PreviewCanvas::resizeEvent(QResizeEvent* e) {
     QGraphicsView::resizeEvent(e);
     fitStage();

@@ -31,8 +31,13 @@ public:
     // 현재 씬(스테이지=논리 캔버스 영역)을 size 픽스맵으로 렌더 (Program 썸네일용).
     QPixmap renderThumbnail(const QSize& size) const;
 
+    // 정렬 스냅 가이드 (LayerItem 드래그 중 호출).  xs/ys 는 씬 좌표.
+    void showSnapGuides(const QList<qreal>& xs, const QList<qreal>& ys);
+    void clearSnapGuides();
+
 protected:
     void drawBackground(QPainter* p, const QRectF& rect) override;
+    void drawForeground(QPainter* p, const QRectF& rect) override;
     void resizeEvent(QResizeEvent* e) override;
     void wheelEvent(QWheelEvent* e) override;
     void mousePressEvent(QMouseEvent* e) override;
@@ -71,6 +76,10 @@ private:
     InlineTextEditor*           m_editText = nullptr;
     QGraphicsRectItem*          m_editBg   = nullptr;
     QString                     m_editingTextId;
+
+    // 정렬 스냅 가이드 (드래그 중 활성). drawForeground 에서 씬 좌표 dashed line 으로 렌더.
+    QList<qreal>                m_guideXs;
+    QList<qreal>                m_guideYs;
 };
 
 } // namespace uwp
