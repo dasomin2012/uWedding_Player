@@ -196,6 +196,8 @@ protected:
     // Undo/Redo — 편집 메뉴 & Preview 툴바 버튼이 공유.
     QAction* m_undoAct = nullptr;
     QAction* m_redoAct = nullptr;
+    // 레이어 복제 (Ctrl+D) — 메뉴/툴바 공유.
+    QAction* m_dupAct  = nullptr;
 };
 
 } // namespace uwp

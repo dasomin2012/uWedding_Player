@@ -811,11 +811,17 @@ void ControlWindow::createMenus() {
     //   메뉴 우측에 단축키 힌트만 노출.
     m_undoAct = editMenu->addAction(tr("실행 취소(&U)\tCtrl+Z"));
     m_redoAct = editMenu->addAction(tr("다시 실행(&R)\tCtrl+Shift+Z"));
+    editMenu->addSeparator();
+    m_dupAct = editMenu->addAction(tr("레이어 복제(&D)\tCtrl+D"));
     connect(m_undoAct, &QAction::triggered, this, [this]{
         if (m_scene) m_scene->undo();
     });
     connect(m_redoAct, &QAction::triggered, this, [this]{
         if (m_scene) m_scene->redo();
+    });
+    connect(m_dupAct,  &QAction::triggered, this, [this]{
+        if (m_scene && !m_scene->selectedId().isEmpty())
+            m_scene->duplicateLayer(m_scene->selectedId());
     });
     // 실제 단축키 dispatcher — 메인 윈도우에 부착, ApplicationShortcut 로 전역.
     auto* scUndo  = new QShortcut(QKeySequence::Undo, this);
@@ -827,6 +833,9 @@ void ControlWindow::createMenus() {
     auto* scRedo2 = new QShortcut(QKeySequence(tr("Ctrl+Y")), this);
     scRedo2->setContext(Qt::ApplicationShortcut);
     connect(scRedo2, &QShortcut::activated, m_redoAct, &QAction::trigger);
+    auto* scDup   = new QShortcut(QKeySequence(tr("Ctrl+D")), this);
+    scDup->setContext(Qt::ApplicationShortcut);
+    connect(scDup, &QShortcut::activated, m_dupAct, &QAction::trigger);
     if (m_scene) {
         auto syncEdit = [this]{
             m_undoAct->setEnabled(m_scene->canUndo());
@@ -834,6 +843,13 @@ void ControlWindow::createMenus() {
         };
         connect(m_scene, &SceneModel::historyChanged, this, syncEdit);
         syncEdit();
+        // 복제는 선택된 레이어가 있을 때만.
+        auto syncDup = [this]{
+            m_dupAct->setEnabled(!m_scene->selectedId().isEmpty());
+        };
+        connect(m_scene, &SceneModel::selectionChanged, this,
+                [syncDup](const QString&){ syncDup(); });
+        syncDup();
     }
 
     auto* sceneMenu = menuBar()->addMenu(tr("장면(&S)"));
@@ -1345,6 +1361,19 @@ QWidget* ControlWindow::buildPreviewPane() {
         connect(btnRedo, &QPushButton::clicked, m_redoAct, &QAction::trigger);
     }
 
+    // 레이어 복제 (Ctrl+D)
+    auto* btnDup = new QPushButton;
+    btnDup->setObjectName("PreviewToolBtn");
+    btnDup->setIcon(QIcon(QStringLiteral(":/icons/copy.svg")));
+    btnDup->setToolTip(tr("선택 레이어 복제 (Ctrl+D)"));
+    if (m_dupAct) {
+        btnDup->setEnabled(m_dupAct->isEnabled());
+        connect(m_dupAct, &QAction::changed, btnDup, [btnDup, this]{
+            btnDup->setEnabled(m_dupAct->isEnabled());
+        });
+        connect(btnDup, &QPushButton::clicked, m_dupAct, &QAction::trigger);
+    }
+
     // 우측 끝: 선택 레이어 삭제 (플랫폼 네이티브 휴지통 아이콘).
     m_btnDeleteLayer = new QPushButton;
     m_btnDeleteLayer->setObjectName("PreviewToolBtn");
@@ -1374,6 +1403,7 @@ QWidget* ControlWindow::buildPreviewPane() {
     toolbar->addSpacing(12);
     toolbar->addWidget(btnUndo);            // 실행 취소
     toolbar->addWidget(btnRedo);            // 다시 실행
+    toolbar->addWidget(btnDup);             // 레이어 복제
     toolbar->addStretch(1);
     toolbar->addWidget(btnAddText);         // 위젯 클러스터: 텍스트(추후 시계·날씨)
     toolbar->addSpacing(12);                // 위젯 ↔ 편집 액션 시각 구분

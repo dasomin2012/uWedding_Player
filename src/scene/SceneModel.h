@@ -29,6 +29,9 @@ public:
     QString addTextLayer(const QString& initialText,
                          const QRectF& geometry = QRectF());
     void    removeLayer(const QString& id);
+    // 지정 레이어를 복제 — 새 id 로 값 복사, 위치는 원본에서 살짝 오프셋
+    // (Ctrl+D UX). 실패 시 빈 문자열. 성공 시 새 id 반환 + 자동 선택.
+    QString duplicateLayer(const QString& id);
     void    clear();
 
     int                   layerCount() const { return m_layers.size(); }

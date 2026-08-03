@@ -97,6 +97,24 @@ QString SceneModel::addTextLayer(const QString& initialText,
     return l.id;
 }
 
+QString SceneModel::duplicateLayer(const QString& id) {
+    const int i = indexOf(id);
+    if (i < 0) return {};
+    Layer copy = m_layers[i];   // 값 복사(텍스트/미디어/스타일 전부 포함)
+    copy.id = QString("layer_%1").arg(++m_idSeq, 3, 10, QChar('0'));
+    // 시각적으로 겹쳐 보이지 않도록 캔버스 크기 대비 2% 오프셋 (최소 20px).
+    const qreal dx = qMax<qreal>(20, m_canvas.width()  * 0.02);
+    const qreal dy = qMax<qreal>(20, m_canvas.height() * 0.02);
+    copy.geometry.translate(dx, dy);
+    copy.zIndex = m_layers.size();   // 맨 위
+    m_layers.push_back(copy);
+    normalizeZ();
+    emit layerAdded(copy.id);
+    select(copy.id);
+    scheduleHistoryPush();
+    return copy.id;
+}
+
 void SceneModel::removeLayer(const QString& idIn) {
     // 방어적 로컬 복사 필수.
     //  호출자가 참조 세만틱스로 자신의 QString 필드를 넘기는 경우(예:
