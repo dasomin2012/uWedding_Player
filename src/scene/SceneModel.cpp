@@ -1,11 +1,22 @@
 #include "SceneModel.h"
 
 #include <QFileInfo>
+#include <QTimer>
 #include <algorithm>
 
 namespace uwp {
 
-SceneModel::SceneModel(QObject* parent) : QObject(parent) {}
+SceneModel::SceneModel(QObject* parent) : QObject(parent) {
+    // 히스토리 디바운스 타이머 — 연속 편집(드래그·타이핑)을 하나의 undo 스텝으로.
+    m_historyTimer = new QTimer(this);
+    m_historyTimer->setSingleShot(true);
+    m_historyTimer->setInterval(400);
+    connect(m_historyTimer, &QTimer::timeout,
+            this, &SceneModel::pushHistoryNow);
+    // 초기 빈 씬을 스냅샷 0 으로 시작.
+    m_history.append(m_layers);
+    m_historyIdx = 0;
+}
 
 void SceneModel::setCanvasSize(const QSize& s) {
     if (s.isValid()) m_canvas = s;
@@ -52,6 +63,7 @@ QString SceneModel::addLayer(const QString& mediaPath, const QRectF& geometry) {
     normalizeZ();
     emit layerAdded(l.id);
     select(l.id);
+    scheduleHistoryPush();
     return l.id;
 }
 
@@ -81,6 +93,7 @@ QString SceneModel::addTextLayer(const QString& initialText,
     normalizeZ();
     emit layerAdded(l.id);
     select(l.id);
+    scheduleHistoryPush();
     return l.id;
 }
 
@@ -99,6 +112,7 @@ void SceneModel::removeLayer(const QString& idIn) {
     if (m_selected == id) select(QString());
     emit layerRemoved(id);
     emit zOrderChanged();
+    scheduleHistoryPush();
 }
 
 void SceneModel::clear() {
@@ -106,6 +120,7 @@ void SceneModel::clear() {
     m_selected.clear();
     emit sceneReset();
     emit selectionChanged(QString());
+    scheduleHistoryPush();
 }
 
 void SceneModel::replaceAll(const QVector<Layer>& layers) {
@@ -127,6 +142,7 @@ void SceneModel::setGeometry(const QString& id, const QRectF& g) {
     if (i < 0 || m_layers[i].geometry == g) return;
     m_layers[i].geometry = g;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setOpacity(const QString& id, double op) {
@@ -136,6 +152,7 @@ void SceneModel::setOpacity(const QString& id, double op) {
     if (qFuzzyCompare(m_layers[i].opacity, op)) return;
     m_layers[i].opacity = op;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setDisplayTime(const QString& id, int sec) {
@@ -143,6 +160,7 @@ void SceneModel::setDisplayTime(const QString& id, int sec) {
     if (i < 0 || m_layers[i].displayTimeSec == sec) return;
     m_layers[i].displayTimeSec = qMax(0, sec);
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setEndAction(const QString& id, EndAction a) {
@@ -150,6 +168,7 @@ void SceneModel::setEndAction(const QString& id, EndAction a) {
     if (i < 0 || m_layers[i].endAction == a) return;
     m_layers[i].endAction = a;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setName(const QString& id, const QString& name) {
@@ -157,6 +176,7 @@ void SceneModel::setName(const QString& id, const QString& name) {
     if (i < 0 || m_layers[i].name == name) return;
     m_layers[i].name = name;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 // ---- Text 위젯 setter --------------------------------------------
@@ -167,6 +187,7 @@ void SceneModel::setText(const QString& id, const QString& text) {
     if (i < 0 || m_layers[i].text == text) return;
     m_layers[i].text = text;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setTextColor(const QString& id, const QString& color) {
@@ -174,6 +195,7 @@ void SceneModel::setTextColor(const QString& id, const QString& color) {
     if (i < 0 || m_layers[i].textColor == color) return;
     m_layers[i].textColor = color;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setFontSize(const QString& id, int px) {
@@ -183,6 +205,7 @@ void SceneModel::setFontSize(const QString& id, int px) {
     if (m_layers[i].fontSize == px) return;
     m_layers[i].fontSize = px;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setFontFamily(const QString& id, const QString& family) {
@@ -190,6 +213,7 @@ void SceneModel::setFontFamily(const QString& id, const QString& family) {
     if (i < 0 || m_layers[i].fontFamily == family) return;
     m_layers[i].fontFamily = family;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setFontWeight(const QString& id, int weight) {
@@ -197,6 +221,7 @@ void SceneModel::setFontWeight(const QString& id, int weight) {
     if (i < 0 || m_layers[i].fontWeight == weight) return;
     m_layers[i].fontWeight = weight;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setTextAlign(const QString& id, int align) {
@@ -206,6 +231,7 @@ void SceneModel::setTextAlign(const QString& id, int align) {
     if (m_layers[i].textAlign == align) return;
     m_layers[i].textAlign = align;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setTextVAlign(const QString& id, int align) {
@@ -215,6 +241,7 @@ void SceneModel::setTextVAlign(const QString& id, int align) {
     if (m_layers[i].textVAlign == align) return;
     m_layers[i].textVAlign = align;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setBgColor(const QString& id, const QString& color) {
@@ -222,6 +249,7 @@ void SceneModel::setBgColor(const QString& id, const QString& color) {
     if (i < 0 || m_layers[i].bgColor == color) return;
     m_layers[i].bgColor = color;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setBgOpacity(const QString& id, double op) {
@@ -231,6 +259,7 @@ void SceneModel::setBgOpacity(const QString& id, double op) {
     if (qFuzzyCompare(m_layers[i].bgOpacity, op)) return;
     m_layers[i].bgOpacity = op;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::setPadding(const QString& id, int px) {
@@ -240,6 +269,7 @@ void SceneModel::setPadding(const QString& id, int px) {
     if (m_layers[i].padding == px) return;
     m_layers[i].padding = px;
     emit layerChanged(id);
+    scheduleHistoryPush();
 }
 
 void SceneModel::raise(const QString& id) {
@@ -248,6 +278,7 @@ void SceneModel::raise(const QString& id) {
     std::swap(m_layers[i], m_layers[i + 1]);
     normalizeZ();
     emit zOrderChanged();
+    scheduleHistoryPush();
 }
 
 void SceneModel::lower(const QString& id) {
@@ -256,6 +287,7 @@ void SceneModel::lower(const QString& id) {
     std::swap(m_layers[i], m_layers[i - 1]);
     normalizeZ();
     emit zOrderChanged();
+    scheduleHistoryPush();
 }
 
 void SceneModel::toFront(const QString& id) {
@@ -265,6 +297,7 @@ void SceneModel::toFront(const QString& id) {
     m_layers.push_back(l);
     normalizeZ();
     emit zOrderChanged();
+    scheduleHistoryPush();
 }
 
 void SceneModel::toBack(const QString& id) {
@@ -274,6 +307,7 @@ void SceneModel::toBack(const QString& id) {
     m_layers.push_front(l);
     normalizeZ();
     emit zOrderChanged();
+    scheduleHistoryPush();
 }
 
 void SceneModel::select(const QString& id) {
@@ -281,6 +315,67 @@ void SceneModel::select(const QString& id) {
     if (!id.isEmpty() && indexOf(id) < 0) return;
     m_selected = id;
     emit selectionChanged(m_selected);
+}
+
+// ---- 히스토리 관리 ----------------------------------------------
+void SceneModel::scheduleHistoryPush() {
+    if (m_suppressHistory) return;
+    m_historyTimer->start();
+}
+
+void SceneModel::pushHistoryNow() {
+    if (m_suppressHistory) return;
+    // redo tail 절단.
+    while (m_history.size() > m_historyIdx + 1)
+        m_history.removeLast();
+    m_history.append(m_layers);
+    m_historyIdx = m_history.size() - 1;
+    // 상한 초과 시 가장 오래된 것부터 제거.
+    while (m_history.size() > kHistoryCap) {
+        m_history.removeFirst();
+        m_historyIdx--;
+    }
+    emit historyChanged();
+}
+
+void SceneModel::flushHistory() {
+    if (m_historyTimer->isActive()) {
+        m_historyTimer->stop();
+        pushHistoryNow();
+    }
+}
+
+void SceneModel::resetHistory() {
+    m_historyTimer->stop();
+    m_history.clear();
+    m_history.append(m_layers);
+    m_historyIdx = 0;
+    emit historyChanged();
+}
+
+void SceneModel::undo() {
+    if (!canUndo()) return;
+    flushHistory();   // 대기 중 변경을 먼저 확정
+    if (!canUndo()) return;
+    m_historyIdx--;
+    m_suppressHistory = true;
+    replaceAll(m_history[m_historyIdx]);
+    m_suppressHistory = false;
+    emit historyChanged();
+}
+
+void SceneModel::redo() {
+    if (!canRedo()) return;
+    m_historyIdx++;
+    m_suppressHistory = true;
+    replaceAll(m_history[m_historyIdx]);
+    m_suppressHistory = false;
+    emit historyChanged();
+}
+
+bool SceneModel::canUndo() const { return m_historyIdx > 0; }
+bool SceneModel::canRedo() const {
+    return m_historyIdx >= 0 && m_historyIdx + 1 < m_history.size();
 }
 
 } // namespace uwp

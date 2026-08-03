@@ -21,6 +21,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QShortcut>
 #include <QDebug>
 #include <QFile>
 #include <QFrame>
@@ -799,6 +800,42 @@ void ControlWindow::createMenus() {
     quitAct->setShortcut(QKeySequence::Quit);
     connect(quitAct, &QAction::triggered, qApp, &QApplication::quit);
 
+    // 편집 — Undo/Redo. QAction 은 메뉴 표시(단축키 힌트) + 아이콘 버튼 공유용.
+    //   단축키 실제 dispatch 는 별도 QShortcut 로 처리 — QAction 을 QMenu 안에
+    //   만 두면 특정 focus 케이스(자식 QLineEdit/QPlainTextEdit 등)에서 트리거가
+    //   안 되는 사례가 관찰됨. QShortcut(ApplicationShortcut) 은 그와 무관하게
+    //   앱 전역에서 발화.  QAction 의 shortcut 은 표시 텍스트로만 사용.
+    auto* editMenu = menuBar()->addMenu(tr("편집(&E)"));
+    //   QAction 에는 shortcut 을 설정하지 않는다 (QShortcut 과 이중 등록 시
+    //   ambiguous 로 인해 발화가 억제됨). 대신 텍스트에 탭+표시 문자열로
+    //   메뉴 우측에 단축키 힌트만 노출.
+    m_undoAct = editMenu->addAction(tr("실행 취소(&U)\tCtrl+Z"));
+    m_redoAct = editMenu->addAction(tr("다시 실행(&R)\tCtrl+Shift+Z"));
+    connect(m_undoAct, &QAction::triggered, this, [this]{
+        if (m_scene) m_scene->undo();
+    });
+    connect(m_redoAct, &QAction::triggered, this, [this]{
+        if (m_scene) m_scene->redo();
+    });
+    // 실제 단축키 dispatcher — 메인 윈도우에 부착, ApplicationShortcut 로 전역.
+    auto* scUndo  = new QShortcut(QKeySequence::Undo, this);
+    scUndo->setContext(Qt::ApplicationShortcut);
+    connect(scUndo, &QShortcut::activated, m_undoAct, &QAction::trigger);
+    auto* scRedo1 = new QShortcut(QKeySequence::Redo, this);  // Ctrl+Shift+Z
+    scRedo1->setContext(Qt::ApplicationShortcut);
+    connect(scRedo1, &QShortcut::activated, m_redoAct, &QAction::trigger);
+    auto* scRedo2 = new QShortcut(QKeySequence(tr("Ctrl+Y")), this);
+    scRedo2->setContext(Qt::ApplicationShortcut);
+    connect(scRedo2, &QShortcut::activated, m_redoAct, &QAction::trigger);
+    if (m_scene) {
+        auto syncEdit = [this]{
+            m_undoAct->setEnabled(m_scene->canUndo());
+            m_redoAct->setEnabled(m_scene->canRedo());
+        };
+        connect(m_scene, &SceneModel::historyChanged, this, syncEdit);
+        syncEdit();
+    }
+
     auto* sceneMenu = menuBar()->addMenu(tr("장면(&S)"));
     auto* saveAct   = sceneMenu->addAction(tr("장면 저장(&S)"));
     saveAct->setShortcut(QKeySequence::Save);
@@ -1282,6 +1319,32 @@ QWidget* ControlWindow::buildPreviewPane() {
                              QRectF(0, 0, cs.width(), cs.height()));
     });
 
+    // Undo/Redo 아이콘 버튼 — 메뉴의 m_undoAct/m_redoAct 와 상태·트리거 공유.
+    //   QAction 은 QMenu 안에 살고 QPushButton 은 여기서 소유하므로 setDefaultAction
+    //   대신 명시적 clicked ↔ trigger + enabledChanged 로 연결.
+    auto* btnUndo = new QPushButton;
+    btnUndo->setObjectName("PreviewToolBtn");
+    btnUndo->setIcon(QIcon(QStringLiteral(":/icons/undo.svg")));
+    btnUndo->setToolTip(tr("실행 취소 (Ctrl+Z)"));
+    auto* btnRedo = new QPushButton;
+    btnRedo->setObjectName("PreviewToolBtn");
+    btnRedo->setIcon(QIcon(QStringLiteral(":/icons/redo.svg")));
+    btnRedo->setToolTip(tr("다시 실행 (Ctrl+Shift+Z)"));
+    if (m_undoAct) {
+        btnUndo->setEnabled(m_undoAct->isEnabled());
+        connect(m_undoAct, &QAction::changed, btnUndo, [btnUndo, this]{
+            btnUndo->setEnabled(m_undoAct->isEnabled());
+        });
+        connect(btnUndo, &QPushButton::clicked, m_undoAct, &QAction::trigger);
+    }
+    if (m_redoAct) {
+        btnRedo->setEnabled(m_redoAct->isEnabled());
+        connect(m_redoAct, &QAction::changed, btnRedo, [btnRedo, this]{
+            btnRedo->setEnabled(m_redoAct->isEnabled());
+        });
+        connect(btnRedo, &QPushButton::clicked, m_redoAct, &QAction::trigger);
+    }
+
     // 우측 끝: 선택 레이어 삭제 (플랫폼 네이티브 휴지통 아이콘).
     m_btnDeleteLayer = new QPushButton;
     m_btnDeleteLayer->setObjectName("PreviewToolBtn");
@@ -1308,6 +1371,9 @@ QWidget* ControlWindow::buildPreviewPane() {
     toolbar->addWidget(m_btnPreviewPlay);
     toolbar->addSpacing(8);
     toolbar->addWidget(m_timeLabel);
+    toolbar->addSpacing(12);
+    toolbar->addWidget(btnUndo);            // 실행 취소
+    toolbar->addWidget(btnRedo);            // 다시 실행
     toolbar->addStretch(1);
     toolbar->addWidget(btnAddText);         // 위젯 클러스터: 텍스트(추후 시계·날씨)
     toolbar->addSpacing(12);                // 위젯 ↔ 편집 액션 시각 구분

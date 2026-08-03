@@ -145,6 +145,8 @@ bool Application::initialize() {
     if (SceneSerializer::loadScene(*m_scene, scenePath)) {
         qInfo() << "Scene: loaded scratch scene from" << scenePath;
     }
+    // 초기 로드 상태를 undo 스택의 시작점으로.
+    m_scene->resetHistory();
 
     // ----- 윈도우 생성 -----
     m_controlWindow = std::make_unique<ControlWindow>(
@@ -965,6 +967,7 @@ void Application::onProgramSelected(const QString& id) {
     // 프로그램 로드 = 그 프로그램의 첫 페이지를 편집 대상으로. 페이지 스위칭은
     // 이후 onPageSelected 가 담당.
     m_scene->replaceAll(p->pages.first().layers);
+    m_scene->resetHistory();   // 새 편집 컨텍스트 — undo 로 이전 씬 돌아가지 않게.
     m_suppressEditSave = false;
     m_editProgramId = id;
     m_editPageId    = p->pages.first().id;
@@ -1047,6 +1050,7 @@ void Application::playPageAt(const Program* p, int pageIdx) {
 
     m_suppressEditSave = true;
     m_scene->replaceAll(p->pages[pageIdx].layers);
+    m_scene->resetHistory();
     m_suppressEditSave = false;
 
     if (m_takeController) m_takeController->take();   // Live 송출 (+ taken→NovaStar)
@@ -1549,6 +1553,7 @@ void Application::onPageSelected(const QString& pageId) {
     m_editPageId = pageId;
     m_suppressEditSave = true;
     m_scene->replaceAll(p->pages[idx].layers);
+    m_scene->resetHistory();
     m_suppressEditSave = false;
     m_controlWindow->setPreviewDisplayTime(p->pages[idx].displayTimeSec);
     if (auto* pgl = m_controlWindow->pageList())
@@ -1597,6 +1602,7 @@ void Application::onPageDeleteRequested(const QString& pageId) {
         m_editPageId = up.pages[newIdx].id;
         m_suppressEditSave = true;
         m_scene->replaceAll(up.pages[newIdx].layers);
+        m_scene->resetHistory();
         m_suppressEditSave = false;
         m_controlWindow->setPreviewDisplayTime(up.pages[newIdx].displayTimeSec);
     }

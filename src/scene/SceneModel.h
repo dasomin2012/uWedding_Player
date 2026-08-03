@@ -7,6 +7,8 @@
 
 #include "Layer.h"
 
+class QTimer;
+
 namespace uwp {
 
 // 씬(편집중 프리셋)의 단일 진실 소스.
@@ -70,6 +72,17 @@ public:
     // 직렬화용 일괄 교체 (SceneSerializer 가 사용)
     void replaceAll(const QVector<Layer>& layers);
 
+    // ---- Undo / Redo (스냅샷 기반) ----
+    void undo();
+    void redo();
+    bool canUndo() const;
+    bool canRedo() const;
+    // 새 컨텍스트(프로그램/페이지 로드) 로 진입 시 히스토리 초기화.
+    // 현재 레이어 상태를 첫 스냅샷으로 등록.
+    void resetHistory();
+    // 대기중 디바운스 스냅샷을 즉시 확정 (프로그램 전환 전 편집 저장 등).
+    void flushHistory();
+
 signals:
     void layerAdded(const QString& id);
     void layerRemoved(const QString& id);
@@ -77,8 +90,12 @@ signals:
     void zOrderChanged();                    // 순서 변경 → 뷰가 zValue 재적용
     void selectionChanged(const QString& id);
     void sceneReset();                       // clear / replaceAll
+    // Undo/Redo 가용성 변경 — UI(메뉴/툴바) 활성 상태 동기화용.
+    void historyChanged();
 
 private:
+    void scheduleHistoryPush();   // 변경 감지 → 디바운스 타이머 재시작
+    void pushHistoryNow();        // 실제 스냅샷 append (redo tail 절단 + cap)
     int  indexOf(const QString& id) const;
     void sortByZ();
     void normalizeZ();                       // 0..n-1 연속 재배치
@@ -88,6 +105,13 @@ private:
     QString        m_selected;
     int            m_idSeq = 0;
     bool           m_aspectLocked = true;   // 편집 보조(비직렬화)
+
+    // 히스토리 스택 (undo/redo). 현재 상태 인덱스 = m_historyIdx.
+    QVector<QVector<Layer>> m_history;
+    int      m_historyIdx      = -1;
+    QTimer*  m_historyTimer    = nullptr;
+    bool     m_suppressHistory = false;   // undo/redo 내부 replaceAll 억제
+    static constexpr int kHistoryCap = 50;
 };
 
 } // namespace uwp

@@ -192,6 +192,10 @@ protected:
     QList<QAction*> m_themeActions;
     QString         m_currentTheme = "light";
     bool            m_layoutRestored = false;   // showEvent 최초 1회 복원 가드
+
+    // Undo/Redo — 편집 메뉴 & Preview 툴바 버튼이 공유.
+    QAction* m_undoAct = nullptr;
+    QAction* m_redoAct = nullptr;
 };
 
 } // namespace uwp
