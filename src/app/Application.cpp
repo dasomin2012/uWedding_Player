@@ -466,6 +466,9 @@ bool Application::initialize() {
         // TAKE 는 "지금 이 씬 나가" — 재생 상태로 확정, 일시정지 해제.
         m_playbackPaused = false;
         m_controlWindow->setLiveState(ControlWindow::LiveState::Playing);
+        // 프로그램 단위 BGM 시작 (playProgram 경로와 대칭 — 사용자 수동 TAKE
+        //  가 사실상 재생 시작을 겸하므로 여기서도 BGM 트리거).
+        applyBgmFor(*p);
     });
     connect(m_controlWindow.get(), &ControlWindow::takeModeChanged,
             this, [this](const QString& mode) {
