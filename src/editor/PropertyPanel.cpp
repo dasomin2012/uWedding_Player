@@ -177,6 +177,24 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     m_textPadding->setRange(0, 500);
     m_textPadding->hide();   // 참조는 남기되 폼에 추가하지 않음
 
+    // 마키(가로 스크롤) — 체크박스 + 속도(px/sec).
+    m_scrollEnabled = new QCheckBox(tr("가로 스크롤"));
+    m_scrollSpeed = new QSpinBox;
+    m_scrollSpeed->setRange(0, 2000);
+    m_scrollSpeed->setSuffix(tr(" px/s"));
+    m_scrollSpeed->setSingleStep(10);
+
+    // Clock 포맷 — QDateTime::toString 포맷. 자주 쓰는 프리셋 + 사용자 입력.
+    m_timeFormat = new QComboBox;
+    m_timeFormat->setEditable(true);
+    m_timeFormat->addItem("HH:mm");
+    m_timeFormat->addItem("HH:mm:ss");
+    m_timeFormat->addItem("A hh:mm");                 // 오전/오후
+    m_timeFormat->addItem("yyyy-MM-dd");
+    m_timeFormat->addItem("yyyy-MM-dd HH:mm");
+    m_timeFormat->addItem("M월 d일 HH:mm");
+    m_timeFormat->setToolTip(tr("QDateTime 포맷 문자열 — 직접 입력 가능"));
+
     // 컨텐츠 내부 폼 — 라벨 폭 통일로 정돈감.
     auto* tf = new QFormLayout(m_textContent);
     tf->setContentsMargins(8, 6, 8, 8);
@@ -201,6 +219,15 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
     bgOpBox->addWidget(m_bgOpacitySlider, 1);
     bgOpBox->addWidget(m_bgOpacityReadout, 0);
     tf->addRow(tr("배경 투명도"), bgOpBox);
+    // 마키 옵션 — 체크박스 + 속도(활성 시에만 편집).
+    auto* scrollRow = new QHBoxLayout;
+    scrollRow->setContentsMargins(0, 0, 0, 0);
+    scrollRow->setSpacing(6);
+    scrollRow->addWidget(m_scrollEnabled);
+    scrollRow->addWidget(m_scrollSpeed, 1);
+    tf->addRow(tr("스크롤"), scrollRow);
+    // Clock 전용 — 시각 포맷 (Text 레이어에는 무의미하나 폼 흐름 단순화 위해 항상 노출).
+    tf->addRow(tr("시각 포맷"), m_timeFormat);
     // (여백 필드 폼 노출 제거)
     // 접힘/노출 로직은 상위(ControlWindow)의 CollapsibleSection 담당.
     // PropertyPanel 은 값 로드/커밋만 처리.
@@ -326,6 +353,23 @@ PropertyPanel::PropertyPanel(SceneModel* model, QWidget* parent)
                 if (m_loading || m_id.isEmpty()) return;
                 m_model->setPadding(m_id, v);
             });
+    connect(m_scrollEnabled, &QCheckBox::toggled, this, [this](bool on){
+        if (m_loading || m_id.isEmpty()) return;
+        m_model->setScrollEnabled(m_id, on);
+        m_scrollSpeed->setEnabled(on);
+    });
+    connect(m_scrollSpeed, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, [this](int v){
+                if (m_loading || m_id.isEmpty()) return;
+                m_model->setScrollSpeed(m_id, v);
+            });
+    // Clock 포맷 편집 — QComboBox editable, currentTextChanged 는 프리셋 선택 +
+    //   사용자 입력(editingFinished 유사) 양쪽 대응.
+    connect(m_timeFormat, &QComboBox::currentTextChanged,
+            this, [this](const QString& fmt){
+                if (m_loading || m_id.isEmpty()) return;
+                m_model->setTimeFormat(m_id, fmt);
+            });
 
     setEnabledAll(false);
 }
@@ -359,7 +403,9 @@ void PropertyPanel::onSelectionChanged(const QString& id) {
 bool PropertyPanel::isTextLayerSelected() const {
     if (m_id.isEmpty()) return false;
     const Layer* l = m_model ? m_model->layer(m_id) : nullptr;
-    return l && l->mediaType == MediaType::Text;
+    // Text/Clock 모두 자막 속성 패널을 공유.
+    return l && (l->mediaType == MediaType::Text
+              || l->mediaType == MediaType::Clock);
 }
 
 void PropertyPanel::onLayerChanged(const QString& id) {
@@ -371,9 +417,9 @@ void PropertyPanel::loadFrom(const QString& id) {
     if (!l) return;
     m_loading = true;
     // 텍스트 레이어는 파일 경로가 없다 — "(텍스트)" 자리표시자로 대체.
-    m_media->setText(l->mediaType == MediaType::Text
-                         ? QStringLiteral("(텍스트)")
-                         : l->media);
+    m_media->setText(l->mediaType == MediaType::Text  ? QStringLiteral("(텍스트)")
+                    : l->mediaType == MediaType::Clock ? QStringLiteral("(시계)")
+                    : l->media);
     m_name->setText(l->name);
     m_x->setValue(qRound(l->geometry.x()));
     m_y->setValue(qRound(l->geometry.y()));
@@ -394,11 +440,11 @@ void PropertyPanel::loadFrom(const QString& id) {
         }
     }
 
-    // ---- 텍스트 필드 값 로드 (mediaType==Text 일 때만) ----
+    // ---- 텍스트·시계 필드 값 로드 ----
     //  자막 컨텐츠의 접힘/노출은 상위 CollapsibleSection 이 담당한다.
     //  여기서는 값만 갱신 — 다른 타입 선택 시엔 폼을 건드리지 않아
     //  이전 텍스트 편집 상태(예: 커서 위치)가 훼손되지 않도록 함.
-    if (l->mediaType == MediaType::Text) {
+    if (l->mediaType == MediaType::Text || l->mediaType == MediaType::Clock) {
         // QPlainTextEdit::setPlainText 는 항상 textChanged 를 발화 →
         // m_loading 가드가 setText 재진입을 막지만, 커서 위치는 문서 끝으로
         // 이동한다. 원본과 동일할 때는 아예 건드리지 않아 편집 흐름 보존.
@@ -421,6 +467,15 @@ void PropertyPanel::loadFrom(const QString& id) {
         m_bgOpacitySlider->setValue(bgPct);
         m_bgOpacityReadout->setText(QString(QStringLiteral("%1%")).arg(bgPct));
         m_textPadding->setValue(l->padding);
+        m_scrollEnabled->setChecked(l->scrollEnabled);
+        m_scrollSpeed->setValue(l->scrollSpeed);
+        m_scrollSpeed->setEnabled(l->scrollEnabled);
+        // 시각 포맷 — Clock 만 편집 가능. Text 레이어에서는 값 표시만 하고 비활성.
+        const bool isClock = (l->mediaType == MediaType::Clock);
+        m_timeFormat->setEnabled(isClock);
+        m_timeFormat->setEditText(isClock ? l->timeFormat : QString());
+        // Text 는 "내용" 필드 편집, Clock 은 미사용 — 오해 방지 위해 비활성.
+        m_textEdit->setEnabled(l->mediaType == MediaType::Text);
     }
     m_loading = false;
 }

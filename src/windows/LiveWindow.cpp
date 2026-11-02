@@ -96,7 +96,8 @@ LiveWindow::LiveLayer LiveWindow::buildLayer(const Layer& l) {
         ll.widget = iw;
         break;
     }
-    case MediaType::Text: {
+    case MediaType::Text:
+    case MediaType::Clock: {
         auto* tw = new TextWidget(l, this);
         tw->setGeometry(mapRect(l.geometry));
         tw->show();

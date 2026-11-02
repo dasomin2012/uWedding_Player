@@ -27,7 +27,8 @@ QJsonObject SceneSerializer::layerToJson(const Layer& l) {
     o["end_action"]       = endActionToString(l.endAction);
     o["name"]             = l.name;
     // Text 위젯 전용 필드 — mediaType==Text 일 때만 저장 (파일 소음 감소).
-    if (l.mediaType == MediaType::Text) {
+    if (l.mediaType == MediaType::Text || l.mediaType == MediaType::Clock) {
+        // 텍스트·시계 위젯 공통 텍스트 속성 (렌더 시 컨텐츠만 시각 소스가 다름).
         o["text"]         = l.text;
         o["text_color"]   = l.textColor;
         o["font_size"]    = l.fontSize;
@@ -38,6 +39,10 @@ QJsonObject SceneSerializer::layerToJson(const Layer& l) {
         o["bg_color"]     = l.bgColor;
         o["bg_opacity"]   = l.bgOpacity;
         o["padding"]      = l.padding;
+        o["scroll_enabled"] = l.scrollEnabled;
+        o["scroll_speed"]   = l.scrollSpeed;
+        if (l.mediaType == MediaType::Clock)
+            o["time_format"] = l.timeFormat;
     }
     return o;
 }
@@ -57,8 +62,8 @@ Layer SceneSerializer::layerFromJson(const QJsonObject& o) {
     l.displayTimeSec = o.value("display_time_sec").toInt(0);
     l.endAction      = endActionFromString(o.value("end_action").toString());
     l.name           = o.value("name").toString();
-    // Text 위젯 — 필드가 없으면 default 값 유지(하위 호환).
-    if (l.mediaType == MediaType::Text) {
+    // Text·Clock 위젯 — 필드가 없으면 default 값 유지(하위 호환).
+    if (l.mediaType == MediaType::Text || l.mediaType == MediaType::Clock) {
         l.text        = o.value("text").toString(l.text);
         l.textColor   = o.value("text_color").toString(l.textColor);
         l.fontSize    = o.value("font_size").toInt(l.fontSize);
@@ -69,6 +74,10 @@ Layer SceneSerializer::layerFromJson(const QJsonObject& o) {
         l.bgColor     = o.value("bg_color").toString(l.bgColor);
         l.bgOpacity   = o.value("bg_opacity").toDouble(l.bgOpacity);
         l.padding     = o.value("padding").toInt(l.padding);
+        l.scrollEnabled = o.value("scroll_enabled").toBool(l.scrollEnabled);
+        l.scrollSpeed   = o.value("scroll_speed").toInt(l.scrollSpeed);
+        if (l.mediaType == MediaType::Clock)
+            l.timeFormat = o.value("time_format").toString(l.timeFormat);
     }
     return l;
 }

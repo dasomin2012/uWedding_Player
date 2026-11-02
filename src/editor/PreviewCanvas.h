@@ -55,6 +55,7 @@ private slots:
     void onSelectionChanged(const QString& id);
     void onSceneReset();
     void onSnapshotReady(const QString& mediaPath, const QImage& image);
+    void syncMarqueeTimer();          // 스크롤 텍스트 여부에 따라 타이머 on/off
 
 private:
     void rebuildFromModel();
@@ -80,6 +81,8 @@ private:
     // 정렬 스냅 가이드 (드래그 중 활성). drawForeground 에서 씬 좌표 dashed line 으로 렌더.
     QList<qreal>                m_guideXs;
     QList<qreal>                m_guideYs;
+    // 마키(스크롤) 애니메이션 — 활성 텍스트 레이어가 있을 때만 30fps 리페인트.
+    QTimer*                     m_marqueeTimer = nullptr;
 };
 
 } // namespace uwp

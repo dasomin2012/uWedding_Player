@@ -996,6 +996,8 @@ void ControlWindow::createCentralLayout() {
     // 텍스트 레이어 신규 생성. 시계·날씨 위젯도 추후 같은 시그널 채널로 확장.
     connect(this, &ControlWindow::addTextLayerRequested,
             this, [this]{ m_scene->addTextLayer(QString()); });
+    connect(this, &ControlWindow::addClockLayerRequested,
+            this, [this]{ m_scene->addClockLayer(); });
 
     // ----- Preview 캔버스 -----
     m_canvas = new PreviewCanvas(m_scene, m_snapshots);
@@ -1351,6 +1353,14 @@ QWidget* ControlWindow::buildPreviewPane() {
     connect(btnAddText, &QPushButton::clicked,
             this, &ControlWindow::addTextLayerRequested);
 
+    // 시계 위젯 — 텍스트 위젯과 스키마 공유, 렌더 시 현재 시각 계산.
+    auto* btnAddClock = new QPushButton;
+    btnAddClock->setObjectName("PreviewToolBtn");
+    btnAddClock->setIcon(QIcon(QStringLiteral(":/icons/clock.svg")));
+    btnAddClock->setToolTip(tr("시계 위젯 추가 — 현재 시각 표시"));
+    connect(btnAddClock, &QPushButton::clicked,
+            this, &ControlWindow::addClockLayerRequested);
+
     // 우측: 캔버스에 꽉 채우기 (선택 레이어 → geometry = 캔버스 전체).
     //   Lucide maximize-2 (양방향 확장 화살표) — "꽉 채우기" 의미에 가장 근접.
     m_btnFillCanvas = new QPushButton;
@@ -1435,7 +1445,8 @@ QWidget* ControlWindow::buildPreviewPane() {
     toolbar->addWidget(btnRedo);            // 다시 실행
     toolbar->addWidget(btnDup);             // 레이어 복제
     toolbar->addStretch(1);
-    toolbar->addWidget(btnAddText);         // 위젯 클러스터: 텍스트(추후 시계·날씨)
+    toolbar->addWidget(btnAddText);         // 위젯 클러스터: 텍스트
+    toolbar->addWidget(btnAddClock);        // 시계 (추후 카운트다운·날씨 확장)
     toolbar->addSpacing(12);                // 위젯 ↔ 편집 액션 시각 구분
     toolbar->addWidget(m_btnFillCanvas);    // 우측: 꽉 채우기
     toolbar->addWidget(m_btnDeleteLayer);   // 우측 끝: 삭제

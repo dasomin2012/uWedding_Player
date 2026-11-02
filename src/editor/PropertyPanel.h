@@ -109,6 +109,11 @@ private:
     QSlider*        m_bgOpacitySlider= nullptr;
     QLabel*         m_bgOpacityReadout = nullptr;
     QSpinBox*       m_textPadding    = nullptr;   // px
+    // 마키(가로 스크롤)
+    QCheckBox*      m_scrollEnabled  = nullptr;
+    QSpinBox*       m_scrollSpeed    = nullptr;   // px/sec
+    // Clock 위젯 전용
+    QComboBox*      m_timeFormat     = nullptr;   // 자주 쓰는 포맷 프리셋 + editable
 };
 
 } // namespace uwp

@@ -6,7 +6,7 @@
 
 namespace uwp {
 
-enum class MediaType { Video, Image, Document, Text, Unknown };
+enum class MediaType { Video, Image, Document, Text, Clock, Unknown };
 enum class EndAction { Loop, Stop, Hold, Next, First };
 
 QString   mediaTypeToString(MediaType t);
@@ -42,6 +42,16 @@ struct Layer {
     QString   bgColor        = "#000000";  // 배경색
     double    bgOpacity      = 0.0;        // 0.0(투명) ~ 1.0
     int       padding        = 8;          // px (신규 텍스트 레이어 기본값)
+
+    // 마키(가로 스크롤). scrollEnabled=true 면 텍스트를 우→좌로 무한 반복.
+    //   scrollSpeed = px/sec 씬 좌표. 0 이면 사실상 정지.
+    bool      scrollEnabled  = false;
+    int       scrollSpeed    = 120;        // 웨딩홀 LED 자막 관용 속도
+
+    // Clock 위젯 전용 — QDateTime::toString 포맷.
+    //   기본 "HH:mm" (24시간). 흔한 대안: "HH:mm:ss", "yyyy-MM-dd HH:mm",
+    //   "A hh:mm" (오전/오후) 등. Text 필드는 렌더 시 이 포맷으로 재계산.
+    QString   timeFormat     = "HH:mm";
 };
 
 } // namespace uwp

@@ -19,6 +19,7 @@
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTextOption>
+#include <QTimer>
 #include <QUrl>
 #include <QFileInfo>
 #include <QDebug>
@@ -85,6 +86,11 @@ PreviewCanvas::PreviewCanvas(SceneModel* model, SnapshotCache* snapshots,
     connect(m_model, &SceneModel::layerAdded,       this, &PreviewCanvas::onLayerAdded);
     connect(m_model, &SceneModel::layerRemoved,     this, &PreviewCanvas::onLayerRemoved);
     connect(m_model, &SceneModel::layerChanged,     this, &PreviewCanvas::onLayerChanged);
+    // 마키 타이머 on/off 는 레이어 추가·삭제·속성 변경·씬 리셋 시 재검사.
+    connect(m_model, &SceneModel::layerAdded,   this, [this](const QString&){ syncMarqueeTimer(); });
+    connect(m_model, &SceneModel::layerRemoved, this, [this](const QString&){ syncMarqueeTimer(); });
+    connect(m_model, &SceneModel::layerChanged, this, [this](const QString&){ syncMarqueeTimer(); });
+    connect(m_model, &SceneModel::sceneReset,   this, [this]{ syncMarqueeTimer(); });
     connect(m_model, &SceneModel::zOrderChanged,    this, &PreviewCanvas::onZOrderChanged);
     connect(m_model, &SceneModel::selectionChanged, this, &PreviewCanvas::onSelectionChanged);
     connect(m_model, &SceneModel::sceneReset,       this, &PreviewCanvas::onSceneReset);
@@ -94,9 +100,37 @@ PreviewCanvas::PreviewCanvas(SceneModel* model, SnapshotCache* snapshots,
                 this, &PreviewCanvas::onSnapshotReady);
     }
 
+    // 마키(스크롤) 리페인트 타이머 — 스크롤 레이어가 있을 때만 30fps 로 활성.
+    m_marqueeTimer = new QTimer(this);
+    m_marqueeTimer->setInterval(33);   // ~30fps
+    connect(m_marqueeTimer, &QTimer::timeout, this, [this]{
+        if (viewport()) viewport()->update();
+    });
+
     // 모델이 이미 레이어를 갖고 있을 수 있다(시작 시 스크래치 씬 선로딩).
     // 시그널 구독 이전 상태를 초기 동기화.
     rebuildFromModel();
+    syncMarqueeTimer();
+}
+
+void PreviewCanvas::syncMarqueeTimer() {
+    if (!m_model || !m_marqueeTimer) return;
+    bool needFast = false;   // 스크롤: 30fps
+    bool needSlow = false;   // Clock: 1Hz 로 충분
+    for (const Layer& l : m_model->layers()) {
+        if (l.mediaType == MediaType::Text
+             && l.scrollEnabled && l.scrollSpeed > 0) {
+            needFast = true;
+        }
+        if (l.mediaType == MediaType::Clock) needSlow = true;
+    }
+    const int interval = needFast ? 33 : (needSlow ? 1000 : 0);
+    if (interval > 0) {
+        m_marqueeTimer->setInterval(interval);
+        if (!m_marqueeTimer->isActive()) m_marqueeTimer->start();
+    } else {
+        if (m_marqueeTimer->isActive()) m_marqueeTimer->stop();
+    }
 }
 
 void PreviewCanvas::syncCanvasRect() {
@@ -354,7 +388,10 @@ void PreviewCanvas::onLayerAdded(const QString& id) {
     m_items.insert(id, item);
 
     // Text 레이어는 파일 없음 → SnapshotCache 요청 스킵. paint() 가 QPainter 로 직접 렌더.
-    if (m_snapshots && l->mediaType != MediaType::Text && !l->media.isEmpty()) {
+    if (m_snapshots
+        && l->mediaType != MediaType::Text
+        && l->mediaType != MediaType::Clock
+        && !l->media.isEmpty()) {
         const QImage c = m_snapshots->cached(l->media);
         if (!c.isNull()) item->setSnapshot(QPixmap::fromImage(c));
         else             m_snapshots->request(l->media);
@@ -376,7 +413,8 @@ void PreviewCanvas::onLayerChanged(const QString& id) {
     it->applyOpacity(l->opacity);
     // Text 필드(내용·글꼴·색·정렬 등)는 paint() 가 매번 모델을 다시 읽으므로
     // geometry/opacity 변화가 없어도 명시적 update() 로 리페인트 트리거.
-    if (l->mediaType == MediaType::Text) it->update();
+    if (l->mediaType == MediaType::Text
+        || l->mediaType == MediaType::Clock) it->update();
 }
 
 void PreviewCanvas::onZOrderChanged() {

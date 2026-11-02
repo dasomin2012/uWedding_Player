@@ -6,6 +6,7 @@
 #include <QByteArray>
 #include <QColor>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
@@ -30,6 +31,25 @@ ObsLiveBackend::ObsLiveBackend(ObsProcessManager* proc, const ObsConfig& cfg,
     if (m_proc) {
         connect(m_proc, &ObsProcessManager::ready,
                 this, &ObsLiveBackend::onObsReady);
+    }
+    // Clock 1Hz 갱신 티커 — 등록된 clock input 이 있을 때만 활성.
+    m_clockTicker = new QTimer(this);
+    m_clockTicker->setInterval(1000);
+    connect(m_clockTicker, &QTimer::timeout, this, &ObsLiveBackend::tickClocks);
+}
+
+void ObsLiveBackend::tickClocks() {
+    if (m_clockInputs.isEmpty()) { m_clockTicker->stop(); return; }
+    ObsClient* c = client();
+    if (!c) return;
+    const QDateTime now = QDateTime::currentDateTime();
+    for (auto it = m_clockInputs.constBegin(); it != m_clockInputs.constEnd(); ++it) {
+        QJsonObject settings; settings["text"] = now.toString(it.value());
+        QJsonObject req;
+        req["inputName"]     = it.key();
+        req["inputSettings"] = settings;
+        req["overlay"]       = true;
+        c->request(QStringLiteral("SetInputSettings"), req, {});
     }
 }
 
@@ -268,6 +288,9 @@ void ObsLiveBackend::rebuildScene(const QString& scene,
     const QStringList old = m_inputsByScene.value(scene);
     m_inputsByScene[scene].clear();
     m_primaryVideoByScene.remove(scene);
+    // 옛 세대의 clock 등록 제거 — 없어질 input 을 계속 갱신하는 낭비 방지.
+    for (const QString& name : old) m_clockInputs.remove(name);
+    if (m_clockInputs.isEmpty() && m_clockTicker) m_clockTicker->stop();
 
     if (old.isEmpty()) {
         buildLayer(scene, layers, 0, std::move(done));
@@ -318,7 +341,8 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
     } else if (L.mediaType == MediaType::Image) {
         kind = QStringLiteral("image_source");
         settings["file"] = mediaPath;
-    } else if (L.mediaType == MediaType::Text) {
+    } else if (L.mediaType == MediaType::Text
+               || L.mediaType == MediaType::Clock) {
         // text_gdiplus_v3: Windows OBS 표준 텍스트 소스.
         //   extents 로 고정 크기 지정 → source 원본 크기 = extents_cx × cy →
         //   상단 GetSceneItemTransform+scale=1.0 경로에서 그대로 배치.
@@ -335,7 +359,11 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
         font["face"]  = L.fontFamily;
         font["size"]  = L.fontSize;
         font["flags"] = (L.fontWeight >= 700) ? 1 : 0;   // OBS_FONT_BOLD
-        settings["text"]         = L.text;
+        // Clock 은 현재 시각을 timeFormat 으로 계산한 문자열을 초기값으로.
+        //   1Hz 주기 갱신은 아래 clockTicker 가 담당(inputName 기억).
+        settings["text"]         = (L.mediaType == MediaType::Clock)
+            ? QDateTime::currentDateTime().toString(L.timeFormat)
+            : L.text;
         settings["font"]         = font;
         settings["color"]        = abgr(L.textColor);
         settings["bk_color"]     = abgr(L.bgColor);
@@ -365,6 +393,11 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
     m_inputsByScene[scene] << inputName;
     if (i == primaryVideoIndex(layers))
         m_primaryVideoByScene.insert(scene, { inputName, playbackLabel(L) });
+    // Clock 이면 1Hz 갱신 대상 등록.
+    if (L.mediaType == MediaType::Clock) {
+        m_clockInputs.insert(inputName, L.timeFormat);
+        if (m_clockTicker && !m_clockTicker->isActive()) m_clockTicker->start();
+    }
 
     qInfo() << "ObsLiveBackend: layer" << L.id << "→ input" << inputName
             << kind << "geom" << L.geometry << "file=" << mediaPath;
@@ -433,6 +466,24 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
                                 f["filterName"] = QStringLiteral("uwp_opacity");
                                 f["filterKind"] =
                                     QStringLiteral("color_filter_v2");
+                                f["filterSettings"] = fs;
+                                c4->request(
+                                    QStringLiteral("CreateSourceFilter"),
+                                    f, {});
+                            }
+                            // 텍스트 마키(스크롤): scroll_filter 로 우→좌 이동.
+                            //   speed_x 는 관례상 양수=우, 음수=좌. Layer.scrollSpeed
+                            //   > 0 을 좌향 이동(자막)으로 매핑.
+                            if (c4 && L.mediaType == MediaType::Text
+                                   && L.scrollEnabled && L.scrollSpeed > 0) {
+                                QJsonObject fs;
+                                fs["speed_x"] = -L.scrollSpeed;
+                                fs["speed_y"] = 0;
+                                fs["loop"]    = true;
+                                QJsonObject f;
+                                f["sourceName"] = inputName;
+                                f["filterName"] = QStringLiteral("uwp_marquee");
+                                f["filterKind"] = QStringLiteral("scroll_filter");
                                 f["filterSettings"] = fs;
                                 c4->request(
                                     QStringLiteral("CreateSourceFilter"),

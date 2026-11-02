@@ -87,6 +87,11 @@ private:
     struct PrimaryVideo { QString inputName; QString label; };
     QHash<QString, PrimaryVideo> m_primaryVideoByScene;
 
+    // Clock 위젯 — inputName → QDateTime 포맷. 1Hz 로 SetInputSettings.text 갱신.
+    QHash<QString, QString> m_clockInputs;
+    QTimer* m_clockTicker = nullptr;
+    void tickClocks();
+
     bool                  m_havePending = false;
     QVector<Layer>        m_pendingLayers;
     std::function<void()> m_pendingCommit;

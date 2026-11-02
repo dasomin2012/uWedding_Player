@@ -3,8 +3,12 @@
 #include "PreviewCanvas.h"
 #include "scene/SceneModel.h"
 
+#include <QDateTime>
+#include <QElapsedTimer>
+#include <QFontMetricsF>
 #include <QGraphicsScene>
 #include <QGraphicsView>
+#include <cmath>
 
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
@@ -97,7 +101,12 @@ void LayerItem::paint(QPainter* p, const QStyleOptionGraphicsItem*, QWidget*) {
     // Text 레이어: SnapshotCache 없이 QPainter 로 직접 렌더.
     //   (변수명 L 은 Handle::L 과 충돌 → lay 로.)
     const Layer* lay = m_model ? m_model->layer(m_id) : nullptr;
-    if (lay && lay->mediaType == MediaType::Text) {
+    if (lay && (lay->mediaType == MediaType::Text
+                 || lay->mediaType == MediaType::Clock)) {
+        // Clock 은 렌더 시 현재 시각을 timeFormat 으로 계산하여 텍스트 대체.
+        const QString content = (lay->mediaType == MediaType::Clock)
+            ? QDateTime::currentDateTime().toString(lay->timeFormat)
+            : lay->text;
         // 배경 (bgColor + bgOpacity)
         QColor bg(lay->bgColor);
         bg.setAlphaF(qBound(0.0, lay->bgOpacity, 1.0));
@@ -111,12 +120,35 @@ void LayerItem::paint(QPainter* p, const QStyleOptionGraphicsItem*, QWidget*) {
         p->setPen(QColor(lay->textColor));
         const QRectF textRect = box.adjusted(lay->padding, lay->padding,
                                              -lay->padding, -lay->padding);
-        int flags = Qt::TextWordWrap;
-        flags |= (lay->textAlign   == 0) ? Qt::AlignLeft
-              : (lay->textAlign    == 2) ? Qt::AlignRight  : Qt::AlignHCenter;
-        flags |= (lay->textVAlign  == 0) ? Qt::AlignTop
-              : (lay->textVAlign   == 2) ? Qt::AlignBottom : Qt::AlignVCenter;
-        p->drawText(textRect, flags, lay->text);
+        if (lay->scrollEnabled && lay->scrollSpeed > 0) {
+            // 마키(가로 스크롤) — 텍스트를 반복 배치해 우→좌로 흐름.
+            //   전역 QElapsedTimer 로 프레임 무관 위치 계산.
+            static QElapsedTimer sClock;
+            if (!sClock.isValid()) sClock.start();
+            const qreal t = sClock.elapsed() / 1000.0;
+            QFontMetricsF fm(f);
+            const qreal textW = fm.horizontalAdvance(content);
+            const qreal gap   = fm.horizontalAdvance(QStringLiteral("    "));
+            const qreal cycle = qMax<qreal>(1.0, textW + gap);
+            qreal offset = -std::fmod(t * lay->scrollSpeed, cycle);
+            // clip 은 textRect 로 → 여백 안쪽에서만 렌더.
+            p->save();
+            p->setClipRect(textRect);
+            const qreal ty = textRect.center().y() + fm.ascent() / 2.0 - fm.descent() / 2.0;
+            qreal x = textRect.left() + offset;
+            while (x < textRect.right()) {
+                p->drawText(QPointF(x, ty), content);
+                x += cycle;
+            }
+            p->restore();
+        } else {
+            int flags = Qt::TextWordWrap;
+            flags |= (lay->textAlign   == 0) ? Qt::AlignLeft
+                  : (lay->textAlign    == 2) ? Qt::AlignRight  : Qt::AlignHCenter;
+            flags |= (lay->textVAlign  == 0) ? Qt::AlignTop
+                  : (lay->textVAlign   == 2) ? Qt::AlignBottom : Qt::AlignVCenter;
+            p->drawText(textRect, flags, content);
+        }
     }
     else if (!m_pixmap.isNull()) {
         p->setRenderHint(QPainter::SmoothPixmapTransform, true);

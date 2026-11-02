@@ -28,6 +28,10 @@ public:
     // geometry 비어있으면 캔버스 중앙 하단(기본 자막 자리)에.
     QString addTextLayer(const QString& initialText,
                          const QRectF& geometry = QRectF());
+    // 시계 위젯 신규 생성 — 텍스트 위젯과 스키마 공유, 렌더 시 현재 시각을
+    //   timeFormat 으로 재계산. 기본 배치는 캔버스 우상단(관용적 시계 위치).
+    QString addClockLayer(const QString& timeFormat = QString(),
+                          const QRectF& geometry = QRectF());
     void    removeLayer(const QString& id);
     // 지정 레이어를 복제 — 새 id 로 값 복사, 위치는 원본에서 살짝 오프셋
     // (Ctrl+D UX). 실패 시 빈 문자열. 성공 시 새 id 반환 + 자동 선택.
@@ -56,6 +60,11 @@ public:
     void setBgColor(const QString& id, const QString& color);
     void setBgOpacity(const QString& id, double op);      // 0.0~1.0
     void setPadding(const QString& id, int px);
+    // 마키 스크롤 (텍스트 위젯 전용).
+    void setScrollEnabled(const QString& id, bool enabled);
+    void setScrollSpeed(const QString& id, int pxPerSec);
+    // 시계 포맷 (Clock 위젯 전용).
+    void setTimeFormat(const QString& id, const QString& format);
 
     // z-order (정렬 + 연속 zIndex 재배치)
     void raise(const QString& id);

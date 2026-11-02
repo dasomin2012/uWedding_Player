@@ -23,7 +23,8 @@ protected:
     void paintEvent(QPaintEvent* e) override;
 
 private:
-    Layer m_layer;   // 값 복사 스냅샷 — Live 는 편집과 분리된 정지 상태
+    Layer   m_layer;   // 값 복사 스냅샷 — Live 는 편집과 분리된 정지 상태
+    class QTimer* m_marqueeTimer = nullptr;
 };
 
 } // namespace uwp

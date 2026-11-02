@@ -119,6 +119,7 @@ signals:
     // Preview 툴바의 "+ 텍스트" 아이콘 — 씬에 텍스트 레이어 신규 생성.
     // 시계·날씨 위젯도 향후 같은 패턴으로 확장.
     void addTextLayerRequested();
+    void addClockLayerRequested();
 
 private:
     void createMenus();

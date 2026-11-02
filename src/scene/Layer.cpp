@@ -10,6 +10,7 @@ QString mediaTypeToString(MediaType t) {
         case MediaType::Image:    return "image";
         case MediaType::Document: return "document";
         case MediaType::Text:     return "text";
+        case MediaType::Clock:    return "clock";
         default:                  return "unknown";
     }
 }
@@ -20,6 +21,7 @@ MediaType mediaTypeFromString(const QString& s) {
     if (v == "image")    return MediaType::Image;
     if (v == "document") return MediaType::Document;
     if (v == "text")     return MediaType::Text;
+    if (v == "clock")    return MediaType::Clock;
     return MediaType::Unknown;
 }
 

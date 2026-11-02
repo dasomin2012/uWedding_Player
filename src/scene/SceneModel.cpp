@@ -1,5 +1,6 @@
 #include "SceneModel.h"
 
+#include <QDateTime>
 #include <QFileInfo>
 #include <QTimer>
 #include <algorithm>
@@ -113,6 +114,37 @@ QString SceneModel::duplicateLayer(const QString& id) {
     select(copy.id);
     scheduleHistoryPush();
     return copy.id;
+}
+
+QString SceneModel::addClockLayer(const QString& timeFormat,
+                                   const QRectF& geometry) {
+    Layer l;
+    l.id        = QString("layer_%1").arg(++m_idSeq, 3, 10, QChar('0'));
+    l.mediaType = MediaType::Clock;
+    l.media.clear();
+    if (!timeFormat.isEmpty()) l.timeFormat = timeFormat;
+    // 기본 배치: 캔버스 우상단 (관용적 시계 위치). 사용자 지정 있으면 그것.
+    if (geometry.isValid() && geometry.width() > 0 && geometry.height() > 0) {
+        l.geometry = geometry;
+    } else {
+        const int w = m_canvas.width();
+        const int h = m_canvas.height();
+        const int boxW = qMax(200, w / 4);
+        const int boxH = qMax(60, qRound(l.fontSize * 2.5));
+        // 우상단 여백 h/20.
+        l.geometry = QRectF(w - boxW - h / 20, h / 20, boxW, boxH);
+    }
+    l.zIndex   = m_layers.size();
+    l.opacity  = 1.0;
+    l.name     = tr("시계 %1").arg(m_layers.size() + 1);
+    // Text 필드는 페이지 로드 시 초기 표시용 자리표시자만.
+    l.text     = QDateTime::currentDateTime().toString(l.timeFormat);
+    m_layers.push_back(l);
+    normalizeZ();
+    emit layerAdded(l.id);
+    select(l.id);
+    scheduleHistoryPush();
+    return l.id;
 }
 
 void SceneModel::removeLayer(const QString& idIn) {
@@ -286,6 +318,32 @@ void SceneModel::setPadding(const QString& id, int px) {
     px = qMax(0, px);
     if (m_layers[i].padding == px) return;
     m_layers[i].padding = px;
+    emit layerChanged(id);
+    scheduleHistoryPush();
+}
+
+void SceneModel::setScrollEnabled(const QString& id, bool enabled) {
+    const int i = indexOf(id);
+    if (i < 0 || m_layers[i].scrollEnabled == enabled) return;
+    m_layers[i].scrollEnabled = enabled;
+    emit layerChanged(id);
+    scheduleHistoryPush();
+}
+
+void SceneModel::setScrollSpeed(const QString& id, int pxPerSec) {
+    const int i = indexOf(id);
+    if (i < 0) return;
+    pxPerSec = qMax(0, pxPerSec);
+    if (m_layers[i].scrollSpeed == pxPerSec) return;
+    m_layers[i].scrollSpeed = pxPerSec;
+    emit layerChanged(id);
+    scheduleHistoryPush();
+}
+
+void SceneModel::setTimeFormat(const QString& id, const QString& format) {
+    const int i = indexOf(id);
+    if (i < 0 || m_layers[i].timeFormat == format) return;
+    m_layers[i].timeFormat = format;
     emit layerChanged(id);
     scheduleHistoryPush();
 }
