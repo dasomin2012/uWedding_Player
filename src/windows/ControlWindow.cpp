@@ -1201,13 +1201,13 @@ void ControlWindow::createCentralLayout() {
     //     접혔을 때도 반드시 보이도록 헤더 슬롯에 배치.
     m_liveStatus = new QLabel;
     m_liveStatus->setObjectName("LiveStatusLabel");
-    m_btnLivePower = new QPushButton(tr("송출화면 숨기기"));
+    m_btnLivePower = new QPushButton(tr("숨기기"));
     m_btnLivePower->setObjectName("LivePowerButton");
     m_btnLivePower->setCheckable(true);
     m_btnLivePower->setMinimumWidth(64);
     m_btnLivePower->setToolTip(
-        tr("송출화면 숨기기: 송출 창을 숨겨 바탕화면이 보이게 함 (재생 일시정지)\n"
-           "송출화면 보이기: 송출 창을 다시 표시 (재생 이어서)"));
+        tr("숨기기: 송출 화면을 숨겨 바탕화면이 보이게 함 (재생 일시정지)\n"
+           "보이기: 송출 화면을 다시 표시 (재생 이어서)"));
     connect(m_btnLivePower, &QPushButton::clicked,
             this, &ControlWindow::blackoutRequested);
     auto* liveHeaderRight = new QWidget;
@@ -1903,7 +1903,7 @@ void ControlWindow::setLivePowerOff(bool off) {
     if (!m_btnLivePower) return;
     QSignalBlocker sb(m_btnLivePower);
     m_btnLivePower->setChecked(off);
-    m_btnLivePower->setText(off ? tr("송출화면 보이기") : tr("송출화면 숨기기"));
+    m_btnLivePower->setText(off ? tr("보이기") : tr("숨기기"));
 }
 
 // 이전 API 호환 — 이제 헤더 ON/OFF 버튼이 blackout 을 시각화한다.
