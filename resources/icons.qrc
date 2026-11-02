@@ -22,6 +22,8 @@
         <file alias="redo.svg">icons/redo.svg</file>
         <file alias="copy.svg">icons/copy.svg</file>
         <file alias="clock.svg">icons/clock.svg</file>
+        <file alias="chevron-down.svg">icons/chevron-down.svg</file>
+        <file alias="chevron-down-light.svg">icons/chevron-down-light.svg</file>
         <!-- Hanmac 로고의 H 문자를 추출한 앱 아이콘 (다양한 크기). -->
         <file alias="app_h_16.png">icons/app_h_16.png</file>
         <file alias="app_h_24.png">icons/app_h_24.png</file>

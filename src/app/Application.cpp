@@ -275,6 +275,18 @@ bool Application::initialize() {
                     m_programs->save(resolveProgramsPath());
                     m_controlWindow->setPreviewDisplayTime(sec);
                 });
+        connect(pp, &PageProperties::endActionChanged, this,
+                [this](EndAction ea){
+                    if (m_editProgramId.isEmpty() || m_editPageId.isEmpty()) return;
+                    const Program* p = m_programs->find(m_editProgramId);
+                    if (!p) return;
+                    const int idx = pageIndexOf(*p, m_editPageId);
+                    if (idx < 0 || p->pages[idx].endAction == ea) return;
+                    Program up = *p;
+                    up.pages[idx].endAction = ea;
+                    m_programs->update(up);
+                    m_programs->save(resolveProgramsPath());
+                });
         connect(pp, &PageProperties::moveUpRequested, this,
                 [this]{ if (!m_editPageId.isEmpty()) onPageMoveUpRequested(m_editPageId); });
         connect(pp, &PageProperties::moveDownRequested, this,
@@ -394,6 +406,13 @@ bool Application::initialize() {
     m_playbackTimer = new QTimer(this);
     m_playbackTimer->setInterval(250);
     connect(m_playbackTimer, &QTimer::timeout, this, [this, ctrl]() {
+        // 리허설 창: 재생 길이 페이지의 카운트다운 총 시간 확인 (동기).
+        if (ctrl && m_rehearsalWindow && ctrl->previewAwaitingVideoLength()) {
+            m_rehearsalWindow->requestPlaybackStatus([ctrl](const PlaybackStatus& st) {
+                if (ctrl && st.valid && st.lengthMs > 0)
+                    ctrl->setPreviewVideoLength(st.lengthMs);
+            });
+        }
         if (m_playbackInFlight) return;
         ILiveSink* sink = currentLiveSink();
         if (!sink || !ctrl) return;
@@ -402,6 +421,18 @@ bool Application::initialize() {
             m_playbackInFlight = false;
             if (ctrl) ctrl->setLivePlayback(st.valid, st.playing, st.positionMs,
                                             st.lengthMs, st.label);
+            // 재생 길이 모드: 영상 끝 시점(길이 - 위치)으로 진행 타이머 재무장.
+            //   매 폴링마다 맞춰 로딩 지연·버퍼링을 흡수. 이전 페이지 영상의
+            //   늦은 응답은 라벨 + "위치가 페이지 경과 시간보다 클 수 없음" 으로 배제.
+            if (!m_waitVideoEnd || m_videoEndLocked || m_playbackPaused
+                || m_currentProgramId.isEmpty() || !m_programAdvanceTimer) return;
+            if (!st.valid || !st.playing || st.lengthMs <= 0
+                || st.label != m_expectVideoLabel) return;
+            const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - m_pageStartMs;
+            if (st.positionMs > elapsed + 1500) return;
+            const qint64 remain = qMax<qint64>(0, st.lengthMs - st.positionMs);
+            m_programAdvanceTimer->start(int(qMin<qint64>(remain, 86400000)));
+            if (remain < 1000) m_videoEndLocked = true;
         });
     });
     m_playbackTimer->start();
@@ -480,9 +511,7 @@ bool Application::initialize() {
         m_currentPageIdx = idx;
         if (auto* pl = m_controlWindow->programList())
             pl->setActiveProgram(m_currentProgramId);
-        const int t = p->pages[idx].displayTimeSec;
-        if (t > 0 && m_programAdvanceTimer)
-            m_programAdvanceTimer->start(t * 1000);
+        armPageAdvance(p->pages[idx]);
         // TAKE 는 "지금 이 씬 나가" — 재생 상태로 확정, 일시정지 해제.
         m_playbackPaused = false;
         m_controlWindow->setLiveState(ControlWindow::LiveState::Playing);
@@ -1077,22 +1106,33 @@ void Application::playPageAt(const Program* p, int pageIdx) {
     if (auto* pgl = m_controlWindow->pageList())
         pgl->setActivePage(m_editPageId);
 
-    const int t = p->pages[pageIdx].displayTimeSec;
-    m_controlWindow->setPreviewDisplayTime(t);
-    // pause/resume elapsed 계산용 기준 시각. displayTime=0 이면 자동 진행
-    // 없으므로 pause 개념도 사실상 무의미하지만 기록해두면 무해.
-    m_pageStartMs   = QDateTime::currentMSecsSinceEpoch();
-    m_pauseRemainMs = 0;
-    if (m_programAdvanceTimer) {
-        m_programAdvanceTimer->stop();
-        if (t > 0) {
-            m_programAdvanceTimer->start(t * 1000);
-            qInfo() << "Page advance armed:" << t << "s,"
-                    << "program=" << p->name
-                    << "pageIdx=" << pageIdx
-                    << "of" << p->pages.size();
-        }
+    m_controlWindow->setPreviewDisplayTime(p->pages[pageIdx].displayTimeSec);
+    armPageAdvance(p->pages[pageIdx]);
+    qInfo() << "Page started: program=" << p->name
+            << "pageIdx=" << pageIdx << "of" << p->pages.size()
+            << "time=" << p->pages[pageIdx].displayTimeSec
+            << "end=" << endActionToString(p->pages[pageIdx].endAction);
+}
+
+void Application::armPageAdvance(const Page& pg) {
+    // pause/resume elapsed 계산 + 재생 길이 모드의 stale 응답 판정 기준 시각.
+    m_pageStartMs      = QDateTime::currentMSecsSinceEpoch();
+    m_pauseRemainMs    = 0;
+    m_waitVideoEnd     = false;
+    m_videoEndLocked   = false;
+    m_expectVideoLabel.clear();
+    if (!m_programAdvanceTimer) return;
+    m_programAdvanceTimer->stop();
+    if (pg.displayTimeSec > 0) {
+        m_programAdvanceTimer->start(pg.displayTimeSec * 1000);
+        return;
     }
+    // 재생 길이 + 반복: 영상 레이어가 스스로 반복 → 페이지 재송출 불필요.
+    if (pg.endAction == EndAction::Loop) return;
+    const int vi = primaryVideoIndex(pg.layers);
+    if (vi < 0) return;                 // 영상 없음 → 계속 표시
+    m_waitVideoEnd     = true;
+    m_expectVideoLabel = playbackLabel(pg.layers[vi]);
 }
 
 // 페이지 만료 → 다음 페이지 or 프로그램 종료 동작.
@@ -1100,6 +1140,18 @@ void Application::onProgramAdvance() {
     if (m_currentProgramId.isEmpty()) return;
     const Program* cur = m_programs->find(m_currentProgramId);
     if (!cur || cur->pages.isEmpty()) return;
+
+    // 페이지 종료 동작. Next 만 아래 "다음 페이지 / program.endAction" 로.
+    if (m_currentPageIdx >= 0 && m_currentPageIdx < cur->pages.size()) {
+        switch (cur->pages[m_currentPageIdx].endAction) {
+        case EndAction::Loop:  playPageAt(cur, m_currentPageIdx); return;
+        case EndAction::First: playPageAt(cur, 0);                return;
+        case EndAction::Stop:  stopProgramPlayback();              return;
+        case EndAction::Hold:  return;
+        case EndAction::Next:
+        default: break;
+        }
+    }
 
     // 다음 페이지 있으면 진행.
     const int nextIdx = m_currentPageIdx + 1;
@@ -1143,6 +1195,7 @@ void Application::onProgramAdvance() {
 
 void Application::stopProgramPlayback() {
     if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
+    m_waitVideoEnd = false;
     if (m_takeController) m_takeController->clearLive();   // Live 비움(검정), 편집 무영향
     stopBgm();                                              // BGM 중지
     m_currentProgramId.clear();
@@ -1207,7 +1260,8 @@ void Application::onPlayPauseRequested() {
             if (p && m_currentPageIdx >= 0 && m_currentPageIdx < p->pages.size()) {
                 const int totalMs = p->pages[m_currentPageIdx].displayTimeSec * 1000;
                 const qint64 elapsed = qint64(totalMs) - qint64(m_pauseRemainMs);
-                m_pageStartMs = QDateTime::currentMSecsSinceEpoch() - elapsed;
+                if (totalMs > 0)   // 재생 길이 페이지는 기준 시각 유지(stale 판정용)
+                    m_pageStartMs = QDateTime::currentMSecsSinceEpoch() - elapsed;
             }
         }
         m_controlWindow->setStatusText(tr("재개"));
@@ -1461,6 +1515,30 @@ void Application::onPreviewCompleted() {
     const Program* p = m_programs ? m_programs->find(m_previewProgramId) : nullptr;
     if (!p) { finishSession(); return; }
 
+    // 페이지 종료 동작 (Live 와 동일 규칙). Next 만 아래 순회/체인으로.
+    if (m_previewPageIdx >= 0 && m_previewPageIdx < p->pages.size()) {
+        const Page& cp = p->pages[m_previewPageIdx];
+        switch (cp.endAction) {
+        case EndAction::Loop:
+            m_rehearsalWindow->applyScene(cp.layers);
+            m_controlWindow->restartPreviewCountdown(cp.displayTimeSec);
+            return;
+        case EndAction::First:
+            m_previewPageIdx = 0;
+            m_rehearsalWindow->applyScene(p->pages.first().layers);
+            m_controlWindow->restartPreviewCountdown(
+                p->pages.first().displayTimeSec);
+            return;
+        case EndAction::Stop:
+            finishSession();
+            return;
+        case EndAction::Hold:
+            return;
+        case EndAction::Next:
+        default: break;
+        }
+    }
+
     // 다음 페이지 있으면 페이지 순회 (같은 프로그램 유지).
     const int nextPageIdx = m_previewPageIdx + 1;
     if (nextPageIdx < p->pages.size()) {
@@ -1542,7 +1620,7 @@ void Application::onPageAddRequested() {
     Program up = *p;
     Page pg;
     pg.id = ProgramRepository::makePageId();
-    // 새 페이지는 빈 layers + displayTime 0(수동). 이름 미지정 → 카드에 순번.
+    // 새 페이지는 빈 layers + 재생 길이(0) + 다음 페이지. 이름 미지정 → 카드에 순번.
     up.pages.push_back(pg);
     m_programs->update(up);
     m_programs->save(resolveProgramsPath());
@@ -1731,7 +1809,7 @@ void Application::onPageDisplayTimeEditRequested(const QString& pageId) {
     const int sec = QInputDialog::getInt(
         m_controlWindow.get(),
         tr("페이지 표시 시간"),
-        tr("자동 진행 초 (0 = 수동 · 최대 86400):"),
+        tr("표시 시간 초 (0 = 재생 길이 · 최대 86400):"),
         curSec, 0, 86400, 1, &ok);
     if (!ok || sec == curSec) return;
     Program up = *p;
@@ -1787,7 +1865,8 @@ void Application::onBlackoutRequested() {
                 if (p && m_currentPageIdx >= 0 && m_currentPageIdx < p->pages.size()) {
                     const int totalMs = p->pages[m_currentPageIdx].displayTimeSec * 1000;
                     const qint64 elapsed = qint64(totalMs) - qint64(m_pauseRemainMs);
-                    m_pageStartMs = QDateTime::currentMSecsSinceEpoch() - elapsed;
+                    if (totalMs > 0)   // 재생 길이 페이지는 기준 시각 유지(stale 판정용)
+                        m_pageStartMs = QDateTime::currentMSecsSinceEpoch() - elapsed;
                 }
             }
             m_controlWindow->setLiveState(ControlWindow::LiveState::Playing);

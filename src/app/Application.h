@@ -20,6 +20,7 @@ class NovaStarController;
 class ProgramRepository;
 class AudioPlayer;
 struct Program;   // UI-D Phase C — playPageAt 시그니처가 사용
+struct Page;
 class ILiveSink;
 #if defined(UWP_HAS_OBS)
 class ObsProcessManager;
@@ -104,6 +105,9 @@ private:
     void stopProgramPlayback();                      // Stop: Live 클리어 + 타이머 정지
     // 현재 재생 프로그램의 특정 페이지를 Live 로 송출 + 타이머 무장.
     void playPageAt(const Program* p, int pageIdx);
+    // 페이지 표시 시간 타이머 무장. 지정 초면 즉시, 재생 길이면 대표 영상
+    //   길이가 폴러로 확인될 때 무장(m_waitVideoEnd).
+    void armPageAdvance(const Page& pg);
     QString currentNovaPresetId() const;            // O5: env > settings.default_preset_id
 #if defined(UWP_HAS_OBS)
     void installQtFallback(const QString& reason);  // O6-A: OBS Failed → qt
@@ -177,6 +181,12 @@ private:
     // 재생 진행 바 — Live 대표 영상 위치/길이 폴링 (qt/obs 자동 분기).
     QTimer* m_playbackTimer    = nullptr;
     bool    m_playbackInFlight = false;
+    // 재생 길이 모드 — 대표 영상 위치/길이로 자동 진행 타이머를 맞춘다.
+    //   m_expectVideoLabel: 이번 페이지 대표 영상 라벨(이전 페이지 응답 배제용).
+    //   m_videoEndLocked  : 종료 1초 전부터는 재무장 중단(반복 영상 되감김 대비).
+    bool    m_waitVideoEnd     = false;
+    bool    m_videoEndLocked   = false;
+    QString m_expectVideoLabel;
     ILiveSink* currentLiveSink() const;     // engine + fallback 반영
 
     // BGM 재생기 — 프로그램 단위 배경음. playProgram 시 시작, 다른 프로그램

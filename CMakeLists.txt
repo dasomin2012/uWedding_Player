@@ -127,6 +127,8 @@ set(UWP_SOURCES
     src/player/LivePlayerPool.cpp
     src/player/SnapshotCache.h
     src/player/SnapshotCache.cpp
+    src/player/MediaDurationProbe.h
+    src/player/MediaDurationProbe.cpp
     src/player/ImageWidget.h
     src/player/ImageWidget.cpp
     src/player/TextWidget.h

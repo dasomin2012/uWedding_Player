@@ -240,8 +240,8 @@ public:
             p->drawText(pill, Qt::AlignCenter, label);
         }
 
-        // endAction 뱃지 — 썸네일 내부 하단 우측. displayTime > 0 일 때만
-        // (수동 진행이면 endAction 은 발동 기회가 없어 배지 표시가 오해 유발).
+        // endAction 뱃지 — 썸네일 내부 하단 우측. 마지막 페이지 종료 동작이
+        // "다음 페이지로" 일 때만 (아니면 program.endAction 이 발동하지 않음).
         const int displaySec = idx.data(kDisplayTimeRole).toInt();
         if (displaySec > 0) {
             const int eaInt = idx.data(kEndActionRole).toInt();
@@ -423,11 +423,9 @@ void ProgramListWidget::setPrograms(const QVector<Program>& programs,
         item->setToolTip(p.name);
         item->setData(kActiveRole, false);      // 아래 setActiveProgram 이 갱신
         item->setData(kEndActionRole,   static_cast<int>(p.endAction));
-        // Phase A: 카드 배지의 "표시 시간" 판정은 첫 페이지 기준.
-        //   Phase C 에서 페이지 순회 도입 시 "합계 시간" 이나 "현재 재생 페이지
-        //   시간" 등으로 재정의 예정.
-        item->setData(kDisplayTimeRole, p.pages.isEmpty() ? 0
-                                                          : p.pages.first().displayTimeSec);
+        // 배지 노출 여부: 마지막 페이지가 "다음 페이지로" 면 1 (program.endAction 발동).
+        item->setData(kDisplayTimeRole, (!p.pages.isEmpty()
+                                         && p.pages.last().endAction == EndAction::Next) ? 1 : 0);
         // 현재 접힘 상태에 맞춰 sizeHint 지정 — setPrograms 가 접힘 중에 불려도 정확.
         item->setSizeHint(m_collapsed ? QSize(200, 40) : kCardSize);
     }
@@ -458,8 +456,8 @@ void ProgramListWidget::updateItem(const QString& id, const Program& p,
             thumb.load(thumbAbsPath);
         it->setIcon(QIcon(thumb.isNull() ? makeDefaultThumb() : thumb));
         it->setData(kEndActionRole,   static_cast<int>(p.endAction));
-        it->setData(kDisplayTimeRole, p.pages.isEmpty() ? 0
-                                                        : p.pages.first().displayTimeSec);
+        it->setData(kDisplayTimeRole, (!p.pages.isEmpty()
+                                       && p.pages.last().endAction == EndAction::Next) ? 1 : 0);
         return;
     }
 }

@@ -147,6 +147,10 @@ bool ProgramRepository::load(const QString& path) {
                 pg.name             = po.value("name").toString();
                 pg.thumbnailRelPath = po.value("thumbnail").toString();
                 pg.displayTimeSec   = po.value("display_time_sec").toInt(0);
+                // end_action 없는 구 포맷 → 기본값(다음 페이지).
+                pg.endAction = po.contains("end_action")
+                    ? endActionFromString(po.value("end_action").toString())
+                    : EndAction::Next;
                 pg.layers           = SceneSerializer::layersFromJson(
                                           po.value("layers").toArray());
                 p.pages.push_back(pg);
@@ -193,6 +197,7 @@ bool ProgramRepository::save(const QString& path) const {
             po["name"]             = pg.name;
             po["thumbnail"]        = pg.thumbnailRelPath;
             po["display_time_sec"] = pg.displayTimeSec;
+            po["end_action"]       = endActionToString(pg.endAction);
             po["layers"]           = SceneSerializer::layersToJson(pg.layers);
             pagesArr.append(po);
         }

@@ -62,9 +62,11 @@ public slots:
 
     // UI-F: Preview 툴바 시간 표시.
     //  seconds < 0 : 프로그램 없음 → "표시 시간: —"
-    //  seconds = 0 : 자동 진행 없음 → "표시 시간: 수동"
+    //  seconds = 0 : 재생 길이 → 리허설 영상 길이가 확인되면 총 시간으로 사용
     //  seconds > 0 : "표시 시간: MM:SS"
     void setPreviewDisplayTime(int seconds);
+    // 재생 길이 페이지 리허설 — Application 이 리허설 창에서 읽은 영상 길이.
+    void setPreviewVideoLength(qint64 ms);
 
     // 외부(예: 리허설 창 close event)에서 미리보기 상태를 강제 리셋.
     void resetPreviewSim();
@@ -89,6 +91,12 @@ public slots:
     //   newTotalSec: 다음 프로그램의 displayTimeSec (0 = 새 프로그램이 수동
     //   진행 — 카운트다운 정지, 창은 유지). 창 열림/닫힘 상태는 건드리지 않음.
     void restartPreviewCountdown(int newTotalSec);
+
+public:
+    // 리허설 실행 중이고 재생 길이 페이지인데 아직 영상 길이를 모를 때 true.
+    bool previewAwaitingVideoLength() const {
+        return m_previewRunning && m_previewTotalSec == 0 && m_previewVideoMs <= 0;
+    }
 
 public:
     ProgramListWidget* programList()   const { return m_programList; }  // Application 와이어링용
@@ -189,7 +197,12 @@ protected:
     //   흐를 시간을 시각화하여 편집자가 "이 프로그램이 화면에 얼마나 머무는가"
     //   를 실시간 감각으로 확인.
     QTimer* m_previewTimer     = nullptr;
-    int     m_previewTotalSec  = -1;   // <0=프로그램 없음, 0=수동, >0=자동
+    int     m_previewTotalSec  = -1;   // <0=프로그램 없음, 0=재생 길이, >0=초
+    qint64  m_previewVideoMs   = 0;    // 재생 길이 페이지의 영상 길이(0=미확인)
+    qint64  previewTotalMs() const {   // 카운트다운 총 시간(ms), 모르면 0
+        return m_previewTotalSec > 0 ? qint64(m_previewTotalSec) * 1000
+                                     : (m_previewTotalSec == 0 ? m_previewVideoMs : 0);
+    }
     int     m_previewElapsedMs = 0;
     bool    m_previewRunning   = false;
 

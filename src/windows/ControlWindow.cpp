@@ -266,7 +266,18 @@ QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
     border: 2px solid #b98a5e;
     padding: 4px 8px;   /* border 굵기 늘면 padding 1px 줄여 총 크기 유지 */
 }
-QComboBox::drop-down { border: 0; width: 20px; }
+/* 선택 상자 — 우측 ▼ 버튼을 명시 (테두리 스타일 지정 시 기본 화살표가 사라짐). */
+QComboBox { padding-right: 34px; }
+QComboBox:focus { padding-right: 33px; }
+QComboBox::drop-down {
+    subcontrol-origin: border; subcontrol-position: top right;
+    width: 26px; border: 0; border-left: 1px solid #d3c8b8;
+    border-top-right-radius: 6px; border-bottom-right-radius: 6px;
+    background: #f3ede4;
+}
+QComboBox::drop-down:hover { background: #e6ddd0; }
+QComboBox::down-arrow { image: url(:/icons/chevron-down.svg); width: 12px; height: 12px; }
+QComboBox::down-arrow:disabled { image: none; }
 
 QSlider::groove:horizontal {
     background: #e4dbcb;
@@ -564,7 +575,18 @@ QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
     border: 2px solid #c8a37a;
     padding: 4px 8px;
 }
-QComboBox::drop-down { border: 0; width: 20px; }
+/* 선택 상자 — 우측 ▼ 버튼을 명시 (테두리 스타일 지정 시 기본 화살표가 사라짐). */
+QComboBox { padding-right: 34px; }
+QComboBox:focus { padding-right: 33px; }
+QComboBox::drop-down {
+    subcontrol-origin: border; subcontrol-position: top right;
+    width: 26px; border: 0; border-left: 1px solid #3a322c;
+    border-top-right-radius: 6px; border-bottom-right-radius: 6px;
+    background: #302923;
+}
+QComboBox::drop-down:hover { background: #3a322c; }
+QComboBox::down-arrow { image: url(:/icons/chevron-down-light.svg); width: 12px; height: 12px; }
+QComboBox::down-arrow:disabled { image: none; }
 
 QSlider::groove:horizontal {
     background: #2c2620;
@@ -1458,13 +1480,20 @@ QWidget* ControlWindow::buildPreviewPane() {
 
 void ControlWindow::setPreviewDisplayTime(int seconds) {
     m_previewTotalSec = seconds;
+    m_previewVideoMs  = 0;
     // 프로그램 컨텍스트가 바뀌면 시뮬레이션은 항상 초기 상태.
     resetPreviewSim();
-    if (m_btnPreviewPlay) m_btnPreviewPlay->setEnabled(seconds > 0);
+    if (m_btnPreviewPlay) m_btnPreviewPlay->setEnabled(seconds >= 0);
+}
+
+void ControlWindow::setPreviewVideoLength(qint64 ms) {
+    if (m_previewTotalSec != 0 || ms <= 0) return;
+    m_previewVideoMs = ms;
+    updateTimeLabel();
 }
 
 void ControlWindow::togglePreviewPlay() {
-    if (m_previewTotalSec <= 0) return;
+    if (m_previewTotalSec < 0) return;
     if (m_previewRunning) {
         m_previewTimer->stop();
         m_previewRunning = false;
@@ -1472,7 +1501,8 @@ void ControlWindow::togglePreviewPlay() {
         emit previewPlayingChanged(false);
     } else {
         // 이미 총 시간에 도달했다면 처음부터 재생
-        if (m_previewElapsedMs >= m_previewTotalSec * 1000)
+        const qint64 tot = previewTotalMs();
+        if (tot > 0 && m_previewElapsedMs >= tot)
             m_previewElapsedMs = 0;
         m_previewTimer->start();
         m_previewRunning = true;
@@ -1484,9 +1514,10 @@ void ControlWindow::togglePreviewPlay() {
 
 void ControlWindow::tickPreviewPlay() {
     m_previewElapsedMs += m_previewTimer->interval();
-    const int totalMs = m_previewTotalSec * 1000;
-    if (m_previewElapsedMs >= totalMs) {
-        m_previewElapsedMs = totalMs;
+    // 재생 길이 페이지에서 영상 길이를 아직 모르면(또는 영상 없음) 계속 셈.
+    const qint64 totalMs = previewTotalMs();
+    if (totalMs > 0 && m_previewElapsedMs >= totalMs) {
+        m_previewElapsedMs = int(totalMs);
         m_previewTimer->stop();
         m_previewRunning = false;
         m_btnPreviewPlay->setText(QStringLiteral("▶"));
@@ -1504,14 +1535,15 @@ void ControlWindow::tickPreviewPlay() {
 
 void ControlWindow::restartPreviewCountdown(int newTotalSec) {
     m_previewTotalSec  = newTotalSec;
+    m_previewVideoMs   = 0;
     m_previewElapsedMs = 0;
     if (!m_previewTimer) return;
-    if (newTotalSec > 0) {
+    if (newTotalSec >= 0) {             // 0 = 재생 길이 — 길이 확인까지 셈만
         m_previewTimer->start();
         m_previewRunning = true;
         if (m_btnPreviewPlay) m_btnPreviewPlay->setText(QStringLiteral("⏸"));
     } else {
-        // 새 프로그램이 수동 진행이면 타이머 정지, 창은 유지.
+        // 총 시간 없음 → 타이머 정지, 창은 유지.
         m_previewTimer->stop();
         m_previewRunning = false;
         if (m_btnPreviewPlay) m_btnPreviewPlay->setText(QStringLiteral("▶"));
@@ -1536,15 +1568,14 @@ void ControlWindow::updateTimeLabel() {
         m_timeLabel->setText(tr("표시 시간: —"));
         return;
     }
-    if (m_previewTotalSec == 0) {
-        m_timeLabel->setText(tr("표시 시간: 수동"));
-        return;
-    }
     const auto fmt = [](int sec) {
         return QString("%1:%2").arg(sec / 60, 2, 10, QChar('0'))
                                 .arg(sec % 60, 2, 10, QChar('0'));
     };
-    const QString total = fmt(m_previewTotalSec);
+    // 재생 길이: 영상 길이 확인 전에는 "재생 길이" 로 표시.
+    const qint64 totMs = previewTotalMs();
+    const QString total = (totMs > 0) ? fmt(int((totMs + 999) / 1000))
+                                      : tr("재생 길이");
     if (m_previewRunning || m_previewElapsedMs > 0) {
         const int elapsedSec = m_previewElapsedMs / 1000;
         m_timeLabel->setText(tr("표시 시간: %1 / %2").arg(fmt(elapsedSec), total));

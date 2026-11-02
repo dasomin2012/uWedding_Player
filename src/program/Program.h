@@ -9,13 +9,18 @@ namespace uwp {
 
 // UI-D Phase A: Page — 프로그램 내부의 순차 재생 단위 (CMS_WebServer 의
 // preset.pages 개념과 유사, 단 인덱스 대신 UUID id 부여).
-//   * displayTimeSec 은 페이지 단위 (0 = 수동 TAKE 필요, >0 = 자동 다음 페이지)
+//   * displayTimeSec 은 페이지 단위 (0 = 재생 길이: 대표 영상 길이만큼,
+//     >0 = 지정 초). 시간이 다 되면 page.endAction 실행.
+//     영상 없는 페이지의 "재생 길이" 는 끝나지 않음(계속 표시).
 //   * layers 는 페이지 소유 — Preview 캔버스는 "현재 편집중 페이지"의 layers 렌더
 struct Page {
     QString        id;                  // "page_<hex>" — UUID (CMS 의 인덱스 부채 회피)
     QString        name;                // 사용자 지정 라벨 (빈 문자열이면 순번 표시)
     QString        thumbnailRelPath;    // 페이지별 썸네일 (없으면 프로그램 대표 사용)
     int            displayTimeSec = 0;
+    // 표시 시간 종료 후: Loop(이 페이지 반복) / Next(다음 페이지, 마지막이면
+    //   program.endAction) / First(첫 페이지) / Stop(Live 검정).
+    EndAction      endAction      = EndAction::Next;
     QVector<Layer> layers;              // 이전 Program.layers 에 해당
 };
 
