@@ -75,7 +75,9 @@ ProgramProperties::ProgramProperties(QWidget* parent)
         if (!m_loading) emit bgmVolumeChanged(v);
     });
 
-    m_bgmLoop = new QCheckBox(tr("반복 재생"));
+    // 종료 동작의 "반복 재생"(프로그램 반복)과 구분 — 배경음 파일만 반복.
+    m_bgmLoop = new QCheckBox(tr("음악 반복"));
+    m_bgmLoop->setToolTip(tr("배경음이 끝나면 처음부터 다시 재생 (끄면 한 번만 재생)"));
     connect(m_bgmLoop, &QCheckBox::toggled, this, [this](bool on){
         if (!m_loading) emit bgmLoopChanged(on);
     });
