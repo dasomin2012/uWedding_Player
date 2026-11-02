@@ -48,6 +48,8 @@ public:
 
     // 재생 진행 바 — program 씬 대표 영상 input 에 GetMediaInputStatus (비동기).
     void requestPlaybackStatus(PlaybackCallback cb) override;
+    // program 장면의 모든 장면 항목을 끄고/켜서 검정 출력.
+    void setBlack(bool black) override;
 
 signals:
     void transitionEnded();   // O5 NovaStar 동기 지점

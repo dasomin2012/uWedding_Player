@@ -79,8 +79,8 @@ private slots:
     void onPreviewPlayingChanged(bool playing);
     // 리허설 카운트다운 자연 만료 → 프로그램의 endAction 조회하여 체인 결정.
     void onPreviewCompleted();
-    // 응급 BLACK 토글 (Live 검정 / 복귀).
-    void onBlackoutRequested();
+    // Live 헤더 송출 화면 3상태 선택 (ControlWindow::OutputMode).
+    void onOutputModeRequested(int mode);
 
     // 클러스터 ▶/⏸ 토글 — 컨텍스트별 재생/일시정지/재개.
     //   대기 → 편집중 프로그램 첫 페이지부터 재생 (m_editProgramId 필요)
@@ -121,6 +121,11 @@ private:
     // 송출화면 보이기/숨기기 실제 반영 — qt: LiveWindow hide/show (바탕화면 노출),
     //   obs: 프로젝터 창 닫기/열기.
     void applyOutputHidden(bool hidden);
+    // 숨김·Black 상태 전환 공통 — 보이는 송출이 없어지면 자동 일시정지,
+    //   다시 생기면(자동 일시정지였을 때만) 재개.
+    void setOutputSuppression(bool hidden, bool black);
+    // TAKE·▶ 재생 시 숨김·Black 즉시 해제 (재생 상태는 호출자가 처리).
+    void releaseOutputSuppression();
     // 송출 화면이 놓일 모니터 (설정 기준 추정). 없으면 nullptr.
     QScreen* liveOutputScreen() const;
     // 다중 모니터에서 제어 창이 송출 모니터에 뜨지 않도록 다른 모니터로 이동.
@@ -181,6 +186,8 @@ private:
 
     // 송출화면 숨김 상태 (구 응급 F2B 검정). 이후 TAKE·재생 시 자동 해제.
     bool    m_blackoutActive = false;
+    // Black(검정 송출) 상태. 숨김과 독립 — TAKE·재생 시 자동 해제.
+    bool    m_blackActive    = false;
     // 자동 진행 일시정지 상태. m_currentProgramId/PageIdx 유지, 타이머 stop,
     // 영상 레이어 freeze. 재개 시 저장된 잔여 시간으로 타이머 재무장 + 재개.
     bool    m_playbackPaused = false;

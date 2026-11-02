@@ -58,6 +58,10 @@ public:
     // TransitionEffect 가 처리)하고, OBS 백엔드는 Studio Mode 전환에 사용.
     virtual void setTransition(bool /*fade*/, int /*fadeDurationMs*/) {}
 
+    // Black: 송출은 유지한 채 화면만 검정으로 (페이지 상태 보존).
+    //   다음 applyScene(TAKE) 이전에 호출자가 해제한다.
+    virtual void setBlack(bool /*black*/) {}
+
     // 씬을 스테이징 → 원자적 commit. commit 완료 시 onCommitted 호출.
     virtual void applyScene(const QVector<Layer>& layers,
                             std::function<void()> onCommitted = {}) = 0;

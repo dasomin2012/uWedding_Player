@@ -13,6 +13,7 @@
 #include <QImage>
 #include <QJsonArray>
 
+#include <QPointer>
 #include <QTimer>
 
 #include <functional>
@@ -640,6 +641,35 @@ void ObsLiveBackend::requestPlaybackStatus(PlaybackCallback cb) {
                 data.value(QStringLiteral("mediaDuration")).toVariant().toLongLong());
             st.label      = pv.label;
             cb(st);
+        });
+}
+
+// Black — program 장면의 항목 전부 SetSceneItemEnabled(false) → 배경(검정)만.
+//   해제 시 다시 enable. TAKE 는 다른 장면(A/B)으로 전환되므로 그 전에
+//   Application 이 해제한다.
+void ObsLiveBackend::setBlack(bool black) {
+    ObsClient* c = client();
+    if (!c || !c->isReady() || m_programScene.isEmpty()) return;
+    const QString scene = m_programScene;
+    QJsonObject req{ { QStringLiteral("sceneName"), scene } };
+    QPointer<ObsLiveBackend> self(this);
+    c->request(QStringLiteral("GetSceneItemList"), req,
+        [self, scene, black](bool ok, const QJsonObject& data, const QString& err) {
+            if (!self) return;
+            ObsClient* c2 = self->client();
+            if (!ok || !c2) {
+                qWarning() << "ObsLiveBackend: GetSceneItemList failed -" << err;
+                return;
+            }
+            const QJsonArray items = data.value(QStringLiteral("sceneItems")).toArray();
+            for (const QJsonValue& v : items) {
+                QJsonObject r;
+                r[QStringLiteral("sceneName")]        = scene;
+                r[QStringLiteral("sceneItemId")]      = v.toObject().value(QStringLiteral("sceneItemId"));
+                r[QStringLiteral("sceneItemEnabled")] = !black;
+                c2->request(QStringLiteral("SetSceneItemEnabled"), r, {});
+            }
+            qInfo() << "ObsLiveBackend: black" << black << "-" << items.size() << "item(s)";
         });
 }
 

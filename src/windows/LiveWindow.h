@@ -60,6 +60,7 @@ public:
     // OFF: 위젯 hide → LiveWindow 검정 배경만 노출. VLC 영상은 별도 pause 필요.
     // ON:  위젯 show → 원 컨텐츠 복귀. 페이지 상태·위치가 그대로 유지된다.
     void setMasked(bool masked);
+    void setBlack(bool black) override { setMasked(black); }
     bool isMasked() const { return m_masked; }
 
 protected:

@@ -229,8 +229,8 @@ bool Application::initialize() {
             this, &Application::onPreviewPlayingChanged);
     connect(m_controlWindow.get(), &ControlWindow::previewCompleted,
             this, &Application::onPreviewCompleted);
-    connect(m_controlWindow.get(), &ControlWindow::blackoutRequested,
-            this, &Application::onBlackoutRequested);
+    connect(m_controlWindow.get(), &ControlWindow::outputModeRequested,
+            this, &Application::onOutputModeRequested);
     connect(m_controlWindow.get(), &ControlWindow::playPauseRequested,
             this, &Application::onPlayPauseRequested);
 
@@ -543,13 +543,8 @@ bool Application::initialize() {
     //      확정 + 자동 진행 timer 재무장. (더블클릭이 더는 Play 를 유발하지 않으므로
     //      TAKE 가 Play 트리거 역할을 겸함.)
     connect(m_controlWindow.get(), &ControlWindow::takeRequested, this, [this]() {
-        // TAKE 발생 → 송출화면 숨김 자동 해제 (실제 컨텐츠가 Live 에 나가므로).
-        if (m_blackoutActive) {
-            m_blackoutActive = false;
-            m_autoPausedByOff = false;
-            applyOutputHidden(false);
-            m_controlWindow->setBlackoutActive(false);
-        }
+        // TAKE 발생 → 숨김·Black 자동 해제 (실제 컨텐츠가 Live 에 나가므로).
+        releaseOutputSuppression();
         if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
         if (m_editProgramId.isEmpty() || !m_programs) return;
         const Program* p = m_programs->find(m_editProgramId);
@@ -1255,14 +1250,7 @@ void Application::stopProgramPlayback() {
 //   재생중     → 일시정지: 자동 진행 timer stop + 잔여 시간 저장 + 영상 정지
 //   일시정지  → 재개: 저장된 잔여 시간으로 timer 재시작 + 영상 재개
 void Application::onPlayPauseRequested() {
-    auto ensurePowerOn = [this]() {
-        if (m_blackoutActive) {
-            m_blackoutActive = false;
-            m_autoPausedByOff = false;
-            applyOutputHidden(false);
-            m_controlWindow->setBlackoutActive(false);
-        }
-    };
+    auto ensurePowerOn = [this]() { releaseOutputSuppression(); };
 
     // (1) 재생중 → 일시정지
     if (!m_currentProgramId.isEmpty() && !m_playbackPaused) {
@@ -1992,17 +1980,30 @@ void Application::onPageDisplayTimeEditRequested(const QString& pageId) {
         m_controlWindow->setPreviewDisplayTime(sec);
 }
 
-// Live 헤더 송출화면 숨기기/보이기 토글. clearLive 는 사용하지 않아
+// Live 헤더 [Live][Black][바탕화면]. clearLive 는 사용하지 않아
 // 페이지 상태(영상 위치/이미지 경과 시간)를 보존한다.
-//   숨기기: 자동 진행 timer 남은시간 저장 · 영상 pause · 송출 창 숨김(바탕화면)
-//   보이기: 송출 창 표시 · 영상 resume · timer 남은시간으로 재시작 (자동 재개는
-//          숨기기가 자동 pause 를 발생시킨 경우에만; 사용자 ⏸ 상태였다면 표시만)
-void Application::onBlackoutRequested() {
-    if (!m_takeController) return;
-    m_blackoutActive = !m_blackoutActive;
+//   바탕화면: 송출 창 숨김 / Black: 송출 창은 두고 검정.
+//   Live 에서 벗어나면 자동 진행 timer 남은시간 저장 · 영상 pause.
+//   Live 로 돌아오면 영상 resume · timer 재시작 (자동 재개는 이 경로가 자동
+//   pause 를 발생시킨 경우에만; 사용자 ⏸ 상태였다면 표시만 복귀)
+void Application::onOutputModeRequested(int mode) {
+    setOutputSuppression(mode == ControlWindow::OutputDesktop,
+                         mode == ControlWindow::OutputBlack);
+}
 
-    if (m_blackoutActive) {
-        // ---- OFF ----
+void Application::setOutputSuppression(bool hidden, bool black) {
+    if (!m_takeController) return;
+    const bool wasSuppressed = m_blackoutActive || m_blackActive;
+    const bool nowSuppressed = hidden || black;
+    if (hidden != m_blackoutActive) applyOutputHidden(hidden);
+    if (black  != m_blackActive) {
+        if (ILiveSink* sink = currentLiveSink()) sink->setBlack(black);
+        qInfo() << "Application: live black" << black;
+    }
+    m_blackoutActive = hidden;
+    m_blackActive    = black;
+
+    if (!wasSuppressed && nowSuppressed) {
         const bool wasPlaying =
             !m_playbackPaused && !m_currentProgramId.isEmpty();
         if (wasPlaying) {
@@ -2014,45 +2015,53 @@ void Application::onBlackoutRequested() {
             if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
             if (m_liveWindow) m_liveWindow->pauseAllVideos();
             m_playbackPaused    = true;
-            m_autoPausedByOff   = true;   // ON 시 자동 resume 표식
+            m_autoPausedByOff   = true;   // 복귀 시 자동 resume 표식
         }
-        // 송출 창 숨김 — 위젯은 파괴하지 않아 페이지 상태 보존, 바탕화면 노출.
-        applyOutputHidden(true);
-        m_controlWindow->setLiveState(ControlWindow::LiveState::ScreenOff);
-        m_controlWindow->setStatusText(tr("송출화면 숨김"));
-    } else {
-        // ---- 보이기 ----
-        applyOutputHidden(false);
-        if (m_autoPausedByOff) {
-            // OFF 로 자동 pause 됐던 케이스 → 자동 resume.
-            m_autoPausedByOff = false;
-            m_playbackPaused  = false;
-            if (m_liveWindow) m_liveWindow->resumeAllVideos();
-            if (m_programAdvanceTimer && m_pauseRemainMs > 0) {
-                m_programAdvanceTimer->start(m_pauseRemainMs);
-                qInfo() << "OFF→ON resume:" << m_pauseRemainMs << "ms remaining";
-                // pageStartMs 재조정 — 이후 재 pause 계산 정확.
-                const Program* p = m_programs->find(m_currentProgramId);
-                if (p && m_currentPageIdx >= 0 && m_currentPageIdx < p->pages.size()) {
-                    const int totalMs = p->pages[m_currentPageIdx].displayTimeSec * 1000;
-                    const qint64 elapsed = qint64(totalMs) - qint64(m_pauseRemainMs);
-                    if (totalMs > 0)   // 재생 길이 페이지는 기준 시각 유지(stale 판정용)
-                        m_pageStartMs = QDateTime::currentMSecsSinceEpoch() - elapsed;
-                }
+    } else if (wasSuppressed && !nowSuppressed && m_autoPausedByOff) {
+        // 숨기기/Black 으로 자동 pause 됐던 케이스 → 자동 resume.
+        m_autoPausedByOff = false;
+        m_playbackPaused  = false;
+        if (m_liveWindow) m_liveWindow->resumeAllVideos();
+        if (m_programAdvanceTimer && m_pauseRemainMs > 0) {
+            m_programAdvanceTimer->start(m_pauseRemainMs);
+            qInfo() << "Output resume:" << m_pauseRemainMs << "ms remaining";
+            // pageStartMs 재조정 — 이후 재 pause 계산 정확.
+            const Program* p = m_programs->find(m_currentProgramId);
+            if (p && m_currentPageIdx >= 0 && m_currentPageIdx < p->pages.size()) {
+                const int totalMs = p->pages[m_currentPageIdx].displayTimeSec * 1000;
+                const qint64 elapsed = qint64(totalMs) - qint64(m_pauseRemainMs);
+                if (totalMs > 0)   // 재생 길이 페이지는 기준 시각 유지(stale 판정용)
+                    m_pageStartMs = QDateTime::currentMSecsSinceEpoch() - elapsed;
             }
-            m_controlWindow->setLiveState(ControlWindow::LiveState::Playing);
-        } else {
-            // 사용자 ⏸ 상태였거나 idle. 마스크만 해제하고 상태는 유지.
-            if (m_currentProgramId.isEmpty())
-                m_controlWindow->setLiveState(ControlWindow::LiveState::Idle);
-            else
-                m_controlWindow->setLiveState(
-                    m_playbackPaused ? ControlWindow::LiveState::Paused
-                                     : ControlWindow::LiveState::Playing);
         }
-        m_controlWindow->setStatusText(tr("Screen ON"));
     }
-    m_controlWindow->setBlackoutActive(m_blackoutActive);
+
+    if (hidden)
+        m_controlWindow->setLiveState(ControlWindow::LiveState::ScreenOff);
+    else if (black)
+        m_controlWindow->setLiveState(ControlWindow::LiveState::Black);
+    else if (m_currentProgramId.isEmpty())
+        m_controlWindow->setLiveState(ControlWindow::LiveState::Idle);
+    else
+        m_controlWindow->setLiveState(
+            m_playbackPaused ? ControlWindow::LiveState::Paused
+                             : ControlWindow::LiveState::Playing);
+    m_controlWindow->setStatusText(hidden ? tr("송출: 바탕화면")
+                                 : black  ? tr("송출: Black")
+                                          : tr("송출: Live"));
+    m_controlWindow->setOutputMode(hidden ? ControlWindow::OutputDesktop
+                                 : black  ? ControlWindow::OutputBlack
+                                          : ControlWindow::OutputLive);
 }
 
+void Application::releaseOutputSuppression() {
+    if (!m_blackoutActive && !m_blackActive) return;
+    if (m_blackoutActive) applyOutputHidden(false);
+    if (m_blackActive)
+        if (ILiveSink* sink = currentLiveSink()) sink->setBlack(false);
+    m_blackoutActive  = false;
+    m_blackActive     = false;
+    m_autoPausedByOff = false;
+    m_controlWindow->setOutputMode(ControlWindow::OutputLive);
+}
 } // namespace uwp

@@ -324,7 +324,7 @@ ProgramListWidget::ProgramListWidget(QWidget* parent)
     m_title = new QLabel(tr("프로그램"));
 
     // 컴팩트 모드(카드 vs. 이름 pill) 전환은 카드 더블클릭이 담당.
-    m_btnAdd = new QPushButton(tr("+ 추가"));
+    m_btnAdd = new QPushButton(tr("+ 프로그램 추가"));
     m_btnAdd->setToolTip(tr("현재 씬을 프로그램으로 저장"));
     connect(m_btnAdd, &QPushButton::clicked, this, &ProgramListWidget::addRequested);
 

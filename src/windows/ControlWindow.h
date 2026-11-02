@@ -47,7 +47,10 @@ public:
     //   Playing  — 자동 진행 중 (녹색)
     //   Paused   — 자동 진행 일시정지 (주황) — 현재 페이지 프레임 정지 표시
     //   ScreenOff — 프로젝터 화면 마스크 (검정 도트) — 자동 진행도 함께 일시정지
-    enum class LiveState { Idle, Playing, Paused, ScreenOff };
+    enum class LiveState { Idle, Playing, Paused, ScreenOff, Black };
+
+    // 송출 화면 3상태 (Live 헤더 [Live][Black][바탕화면] 버튼). 시그널은 int.
+    enum OutputMode { OutputLive = 0, OutputBlack = 1, OutputDesktop = 2 };
 
     // 창 닫기(X) 시 호출 — false 를 돌려주면 닫기 취소(창 유지/숨김은 호출자 몫).
     //   Application 이 "송출화면 종료 / 유지 / 취소" 를 묻는 데 사용.
@@ -83,16 +86,12 @@ public slots:
     void showPagesTab();
     void showProgramsTab();
 
-    // 응급 BLACK 버튼 시각 상태 — Application 이 실제 상태 관리.
-    void setBlackoutActive(bool active);
-
     // Live 패널의 3-축 시각 상태 (LiveState 는 public: 섹션에 선언).
     //   1) 상태 라벨: 재생중(녹색) / 일시정지(주황) / 대기(회색)
-    //   2) ON/OFF 버튼 (헤더): 프로젝터 표시 마스크 상태 — Application 의
-    //      m_blackoutActive 를 반전. active=true → OFF, false → ON.
+    //   2) [Live][Black][바탕화면] 버튼 (헤더): 송출 화면 상태 — setOutputMode.
     //   3) ▶/⏸ 버튼 (클러스터): 자동 진행 재생/일시정지 상태.
     void setLiveState(LiveState s);
-    void setLivePowerOff(bool off);   // Live 헤더 ON/OFF 버튼 시각 상태
+    void setOutputMode(int mode);     // OutputMode — 현재 상태 버튼만 눌린 모양
     void setPlayPauseState(LiveState s);   // 클러스터 ▶/⏸ 아이콘 갱신
 
     // 리허설 체인 (Loop/Next/First) 연속 재생 시 카운트다운만 재시작.
@@ -127,8 +126,8 @@ signals:
     // 카운트다운이 자연 만료 (auto-complete). Application 이 프로그램의
     // endAction 을 조회해 체인(반복/다음/첫)·정지·유지 중 하나를 실행.
     void previewCompleted();
-    // 응급 F2B 토글 — 헤더 ON/OFF 버튼이 발화. Application 이 상태 관리.
-    void blackoutRequested();
+    // 송출 화면 상태 선택 — 헤더 [Live][Black][바탕화면]. mode = OutputMode.
+    void outputModeRequested(int mode);
     // 클러스터 ▶/⏸ 버튼 — 재생/일시정지 토글. Application 이 컨텍스트
     // (재생중이면 pause, 일시정지면 resume, 대기면 편집중 프로그램 재생)로 판단.
     void playPauseRequested();
@@ -181,7 +180,9 @@ protected:
     // 구 BLACK 버튼(클러스터)은 재생/일시정지 아이콘 버튼으로 교체.
     QPushButton*  m_btnPlayPause    = nullptr;   // ▶/⏸ 자동 진행 제어
     QLabel*       m_liveStatus      = nullptr;   // Live 헤더 상태 라벨(3-state)
-    QPushButton*  m_btnLivePower    = nullptr;   // Live 헤더 송출화면 보이기/숨기기 토글
+    QPushButton*  m_btnOutLive      = nullptr;   // Live 헤더 송출 상태: Live
+    QPushButton*  m_btnOutBlack     = nullptr;   //                     Black(검정)
+    QPushButton*  m_btnOutDesktop   = nullptr;   //                     바탕화면(송출 창 숨김)
     std::function<bool()> m_closeHandler;        // 닫기 확인 (없으면 바로 닫힘)
 
     // UX-1: 상태표시줄 위젯 (색 도트 + 엔진/모니터 라벨 + 시계).

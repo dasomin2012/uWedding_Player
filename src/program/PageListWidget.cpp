@@ -204,7 +204,7 @@ PageListWidget::PageListWidget(QWidget* parent)
     //   ProgramListWidget 과 동일한 [카드 리스트 | + 추가] 한 줄 레이아웃.
     m_titleLabel = new QLabel(tr("페이지"));
 
-    m_btnAdd = new QPushButton(tr("+ 추가"));
+    m_btnAdd = new QPushButton(tr("+ 페이지 추가"));
     m_btnAdd->setEnabled(false);
     m_btnAdd->setObjectName("PageAddButton");
     connect(m_btnAdd, &QPushButton::clicked, this, &PageListWidget::addRequested);

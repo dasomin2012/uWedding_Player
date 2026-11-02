@@ -207,6 +207,18 @@ QPushButton#LivePowerButton:checked {
     border-color: #000000;
 }
 QPushButton#LivePowerButton:checked:hover { background: #1c1512; }
+/* 송출 3상태 — 선택된 버튼을 상태색으로 (Live 초록 · Black 검정 · 바탕화면 파랑). */
+QPushButton#LivePowerButton[outMode="live"]:checked {
+    background: #2ea043; color: #ffffff; border-color: #2ea043;
+}
+QPushButton#LivePowerButton[outMode="live"]:checked:hover { background: #278a39; }
+QPushButton#LivePowerButton[outMode="black"]:checked {
+    background: #000000; color: #ffffff; border-color: #e2a132;
+}
+QPushButton#LivePowerButton[outMode="desktop"]:checked {
+    background: #2f6fd6; color: #ffffff; border-color: #2f6fd6;
+}
+QPushButton#LivePowerButton[outMode="desktop"]:checked:hover { background: #285fb8; }
 
 QPushButton#PreviewToolBtn {
     background: #ffffff;
@@ -516,6 +528,18 @@ QPushButton#LivePowerButton:checked {
     border-color: #000000;
 }
 QPushButton#LivePowerButton:checked:hover { background: #1c1512; }
+/* 송출 3상태 — 선택된 버튼을 상태색으로 (Live 초록 · Black 검정 · 바탕화면 파랑). */
+QPushButton#LivePowerButton[outMode="live"]:checked {
+    background: #2ea043; color: #ffffff; border-color: #2ea043;
+}
+QPushButton#LivePowerButton[outMode="live"]:checked:hover { background: #278a39; }
+QPushButton#LivePowerButton[outMode="black"]:checked {
+    background: #000000; color: #ffffff; border-color: #e2a132;
+}
+QPushButton#LivePowerButton[outMode="desktop"]:checked {
+    background: #2f6fd6; color: #ffffff; border-color: #2f6fd6;
+}
+QPushButton#LivePowerButton[outMode="desktop"]:checked:hover { background: #285fb8; }
 
 QPushButton#PreviewToolBtn {
     background: #26211c;
@@ -1064,7 +1088,7 @@ void ControlWindow::createCentralLayout() {
     m_progProps = new ProgramProperties;
 
     // ----- UI-C: TAKE 클러스터 (Live 미러 아래 배치) -----
-    m_takeButton = new QPushButton(tr("TAKE"));
+    m_takeButton = new QPushButton(tr("Live 송출"));
     m_takeButton->setObjectName("TakeButton");
     m_takeButton->setMinimumHeight(52);
     connect(m_takeButton, &QPushButton::clicked,
@@ -1197,26 +1221,41 @@ void ControlWindow::createCentralLayout() {
     //   접어 시각적 노이즈와 세로 공간을 줄인다. 접힘 상태 유지는 사용자
     //   조작을 우선으로 하되, 선택 레이어 타입에 따라 자동 힌트도 제공.
     //
-    //   Live 헤더 우측: 상태 라벨(3-state) + ON/OFF 마스크 버튼.
-    //     접혔을 때도 반드시 보이도록 헤더 슬롯에 배치.
+    //   Live 헤더 우측: 상태 라벨 + 송출 화면 3상태 버튼 [Live][Black][바탕화면].
+    //     접혔을 때도 반드시 보이도록 헤더 슬롯에 배치. 현재 상태 버튼만 눌림.
     m_liveStatus = new QLabel;
     m_liveStatus->setObjectName("LiveStatusLabel");
-    m_btnLivePower = new QPushButton(tr("숨기기"));
-    m_btnLivePower->setObjectName("LivePowerButton");
-    m_btnLivePower->setCheckable(true);
-    m_btnLivePower->setMinimumWidth(64);
-    m_btnLivePower->setToolTip(
-        tr("숨기기: 송출 화면을 숨겨 바탕화면이 보이게 함 (재생 일시정지)\n"
-           "보이기: 송출 화면을 다시 표시 (재생 이어서)"));
-    connect(m_btnLivePower, &QPushButton::clicked,
-            this, &ControlWindow::blackoutRequested);
+    auto mkOutBtn = [this](const QString& text, const QString& tip, int mode) {
+        auto* b = new QPushButton(text);
+        b->setObjectName("LivePowerButton");   // 기존 헤더 버튼 스타일 공유
+        // 선택 시 상태색 — QSS [outMode="live|black|desktop"]:checked.
+        b->setProperty("outMode", mode == OutputLive  ? "live"
+                                : mode == OutputBlack ? "black" : "desktop");
+        b->setCheckable(true);
+        b->setToolTip(tip);
+        connect(b, &QPushButton::clicked, this,
+                [this, mode]{ emit outputModeRequested(mode); });
+        return b;
+    };
+    m_btnOutLive    = mkOutBtn(tr("Live"),
+        tr("송출 화면 표시 (Black·바탕화면에서 돌아오면 재생 이어서)"), OutputLive);
+    m_btnOutBlack   = mkOutBtn(tr("Black"),
+        tr("송출 화면을 검정으로 (재생 일시정지)"), OutputBlack);
+    m_btnOutDesktop = mkOutBtn(tr("바탕화면"),
+        tr("송출 창을 숨겨 바탕화면이 보이게 함 (재생 일시정지)"), OutputDesktop);
     auto* liveHeaderRight = new QWidget;
     {
         auto* hh = new QHBoxLayout(liveHeaderRight);
         hh->setContentsMargins(0, 0, 0, 0);
         hh->setSpacing(8);
         hh->addWidget(m_liveStatus);
-        hh->addWidget(m_btnLivePower);
+        auto* seg = new QHBoxLayout;   // 3 버튼은 붙여서 한 묶음으로
+        seg->setContentsMargins(0, 0, 0, 0);
+        seg->setSpacing(2);
+        seg->addWidget(m_btnOutLive);
+        seg->addWidget(m_btnOutBlack);
+        seg->addWidget(m_btnOutDesktop);
+        hh->addLayout(seg);
     }
 
     auto* liveSection = new CollapsibleSection(tr("Live 송출"));
@@ -1224,7 +1263,7 @@ void ControlWindow::createCentralLayout() {
     liveSection->setContent(buildLivePanel());
     liveSection->setHeaderRight(liveHeaderRight);
     setLiveState(LiveState::Idle);
-    setLivePowerOff(false);
+    setOutputMode(OutputLive);
 
     // 앱 최초 실행 시 모든 속성 섹션은 접힘 상태. 대응 선택(레이어/카드)이
     // 있어야만 자동 펼침. 사용자가 화면 진입 즉시 하단 편집에만 집중할 수 있도록.
@@ -1882,7 +1921,12 @@ void ControlWindow::setLiveState(LiveState s) {
                 "color: #e2a132; font-weight: 700; letter-spacing: 0.06em;"));
             break;
         case LiveState::ScreenOff:
-            m_liveStatus->setText(tr("● 송출 숨김"));
+            m_liveStatus->setText(tr("● 바탕화면"));
+            m_liveStatus->setStyleSheet(QStringLiteral(
+                "color: #4a4038; font-weight: 700; letter-spacing: 0.06em;"));
+            break;
+        case LiveState::Black:
+            m_liveStatus->setText(tr("● Black"));
             m_liveStatus->setStyleSheet(QStringLiteral(
                 "color: #4a4038; font-weight: 700; letter-spacing: 0.06em;"));
             break;
@@ -1897,18 +1941,16 @@ void ControlWindow::setLiveState(LiveState s) {
     setPlayPauseState(s);
 }
 
-// Live 헤더 송출화면 버튼 — off=true → 송출 창 숨김 상태.
-//   버튼 글자는 "누르면 할 일" — 숨김 상태면 보이기, 표시 상태면 숨기기.
-void ControlWindow::setLivePowerOff(bool off) {
-    if (!m_btnLivePower) return;
-    QSignalBlocker sb(m_btnLivePower);
-    m_btnLivePower->setChecked(off);
-    m_btnLivePower->setText(off ? tr("보이기") : tr("숨기기"));
-}
-
-// 이전 API 호환 — 이제 헤더 ON/OFF 버튼이 blackout 을 시각화한다.
-void ControlWindow::setBlackoutActive(bool active) {
-    setLivePowerOff(active);
+// Live 헤더 송출 화면 3상태 — 현재 상태 버튼만 눌린 모양(같은 버튼 재클릭도 유지).
+void ControlWindow::setOutputMode(int mode) {
+    const std::pair<QPushButton*, int> btns[] = {
+        { m_btnOutLive, OutputLive }, { m_btnOutBlack, OutputBlack },
+        { m_btnOutDesktop, OutputDesktop } };
+    for (const auto& b : btns) {
+        if (!b.first) continue;
+        QSignalBlocker sb(b.first);
+        b.first->setChecked(b.second == mode);
+    }
 }
 
 // 클러스터의 재생/일시정지 아이콘 반영. 재생중=일시정지(누르면 pause), 그 외=재생.
