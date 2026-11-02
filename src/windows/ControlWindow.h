@@ -4,6 +4,8 @@
 #include <QMainWindow>
 #include <QString>
 
+#include <functional>
+
 class QLabel;
 class QWidget;
 class QPushButton;
@@ -46,6 +48,12 @@ public:
     //   Paused   — 자동 진행 일시정지 (주황) — 현재 페이지 프레임 정지 표시
     //   ScreenOff — 프로젝터 화면 마스크 (검정 도트) — 자동 진행도 함께 일시정지
     enum class LiveState { Idle, Playing, Paused, ScreenOff };
+
+    // 창 닫기(X) 시 호출 — false 를 돌려주면 닫기 취소(창 유지/숨김은 호출자 몫).
+    //   Application 이 "송출화면 종료 / 유지 / 취소" 를 묻는 데 사용.
+    void setCloseHandler(std::function<bool()> handler) {
+        m_closeHandler = std::move(handler);
+    }
 
 public slots:
     void setStatusText(const QString& text);
@@ -173,7 +181,8 @@ protected:
     // 구 BLACK 버튼(클러스터)은 재생/일시정지 아이콘 버튼으로 교체.
     QPushButton*  m_btnPlayPause    = nullptr;   // ▶/⏸ 자동 진행 제어
     QLabel*       m_liveStatus      = nullptr;   // Live 헤더 상태 라벨(3-state)
-    QPushButton*  m_btnLivePower    = nullptr;   // Live 헤더 ON/OFF 마스크 토글
+    QPushButton*  m_btnLivePower    = nullptr;   // Live 헤더 송출화면 보이기/숨기기 토글
+    std::function<bool()> m_closeHandler;        // 닫기 확인 (없으면 바로 닫힘)
 
     // UX-1: 상태표시줄 위젯 (색 도트 + 엔진/모니터 라벨 + 시계).
     QLabel*  m_statusObsDot      = nullptr;

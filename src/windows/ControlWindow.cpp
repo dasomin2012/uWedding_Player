@@ -1201,12 +1201,13 @@ void ControlWindow::createCentralLayout() {
     //     접혔을 때도 반드시 보이도록 헤더 슬롯에 배치.
     m_liveStatus = new QLabel;
     m_liveStatus->setObjectName("LiveStatusLabel");
-    m_btnLivePower = new QPushButton(tr("ON"));
+    m_btnLivePower = new QPushButton(tr("송출화면 숨기기"));
     m_btnLivePower->setObjectName("LivePowerButton");
     m_btnLivePower->setCheckable(true);
     m_btnLivePower->setMinimumWidth(64);
     m_btnLivePower->setToolTip(
-        tr("프로젝터 화면 표시 ON/OFF — OFF 는 응급 검정 마스크"));
+        tr("송출화면 숨기기: 송출 창을 숨겨 바탕화면이 보이게 함 (재생 일시정지)\n"
+           "송출화면 보이기: 송출 창을 다시 표시 (재생 이어서)"));
     connect(m_btnLivePower, &QPushButton::clicked,
             this, &ControlWindow::blackoutRequested);
     auto* liveHeaderRight = new QWidget;
@@ -1741,6 +1742,10 @@ void ControlWindow::updateTaskbarInset() {
 
 void ControlWindow::closeEvent(QCloseEvent* event) {
     saveLayoutState();
+    if (m_closeHandler && !m_closeHandler()) {
+        event->ignore();   // 유지/취소 — 호출자가 창 숨김 등 처리
+        return;
+    }
     QMainWindow::closeEvent(event);
 }
 
@@ -1877,7 +1882,7 @@ void ControlWindow::setLiveState(LiveState s) {
                 "color: #e2a132; font-weight: 700; letter-spacing: 0.06em;"));
             break;
         case LiveState::ScreenOff:
-            m_liveStatus->setText(tr("● Screen OFF"));
+            m_liveStatus->setText(tr("● 송출 숨김"));
             m_liveStatus->setStyleSheet(QStringLiteral(
                 "color: #4a4038; font-weight: 700; letter-spacing: 0.06em;"));
             break;
@@ -1892,12 +1897,13 @@ void ControlWindow::setLiveState(LiveState s) {
     setPlayPauseState(s);
 }
 
-// Live 헤더 ON/OFF 버튼 — off=true → 프로젝터 검정 마스크 상태.
+// Live 헤더 송출화면 버튼 — off=true → 송출 창 숨김 상태.
+//   버튼 글자는 "누르면 할 일" — 숨김 상태면 보이기, 표시 상태면 숨기기.
 void ControlWindow::setLivePowerOff(bool off) {
     if (!m_btnLivePower) return;
     QSignalBlocker sb(m_btnLivePower);
     m_btnLivePower->setChecked(off);
-    m_btnLivePower->setText(off ? tr("OFF") : tr("ON"));
+    m_btnLivePower->setText(off ? tr("송출화면 보이기") : tr("송출화면 숨기기"));
 }
 
 // 이전 API 호환 — 이제 헤더 ON/OFF 버튼이 blackout 을 시각화한다.

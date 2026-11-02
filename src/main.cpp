@@ -14,6 +14,10 @@
 #include "app/Application.h"
 #include "app/CrashHandler.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace {
 
 // 파일 로거: 모든 qDebug/qInfo/qWarning/qCritical 을 콘솔(stderr) 과
@@ -125,6 +129,14 @@ int main(int argc, char* argv[]) {
     if (!locked) {
         if (instanceLock.error() == QSharedMemory::AlreadyExists) {
             qWarning() << "uWeddingPlayer: 이미 실행 중 — 두 번째 인스턴스 종료";
+#ifdef _WIN32
+            // 기존 인스턴스에 "제어 창 열기" 요청 (송출화면 유지로 제어 창을
+            // 닫아 둔 경우 복귀). 포그라운드 전환 권한을 넘긴 뒤 브로드캐스트.
+            AllowSetForegroundWindow(ASFW_ANY);
+            PostMessageW(HWND_BROADCAST,
+                         RegisterWindowMessageA(uwp::kShowControlMessage), 0, 0);
+            return 0;
+#endif
             QMessageBox::information(nullptr,
                 QStringLiteral("uWeddingPlayer"),
                 QStringLiteral("이미 실행 중입니다.\n작업 표시줄에서 기존 창을 확인해 주세요."));

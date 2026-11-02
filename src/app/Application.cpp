@@ -47,7 +47,15 @@
 #include <QSettings>
 #include <QStatusBar>
 #include <QStringList>
+#include <QSystemTrayIcon>
 #include <QTimer>
+#include <QAbstractNativeEventFilter>
+#include <QMenu>
+#include <QPushButton>
+#include <functional>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <QFile>
 #include <QPixmap>
 #include <QVBoxLayout>
@@ -57,6 +65,38 @@ namespace uwp {
 
 // 전방 선언 — 아래 정의된 헬퍼가 앞쪽 람다에서도 참조 가능하도록.
 static int pageIndexOf(const Program& p, const QString& pageId);
+
+namespace {
+// 두 번째 실행이 보낸 "제어 창 열기" 브로드캐스트 수신 (Win32 전용).
+//   숨김 상태의 제어 창도 top-level 이라 HWND_BROADCAST 를 받는다.
+class ShowControlFilter : public QAbstractNativeEventFilter {
+public:
+    explicit ShowControlFilter(std::function<void()> onShow)
+        : m_onShow(std::move(onShow)) {
+#ifdef _WIN32
+        m_msg = RegisterWindowMessageA(kShowControlMessage);
+#endif
+    }
+    bool nativeEventFilter(const QByteArray& type, void* message, long*) override {
+#ifdef _WIN32
+        if (m_msg && type == "windows_generic_MSG") {
+            const MSG* msg = static_cast<const MSG*>(message);
+            if (msg->message == m_msg && m_onShow) {
+                // 브로드캐스트라 이 앱의 top-level 창 수만큼 도착 → 큐에 넣어 1회처럼 처리.
+                QTimer::singleShot(0, m_onShow);
+                return true;
+            }
+        }
+#else
+        Q_UNUSED(type); Q_UNUSED(message);
+#endif
+        return false;
+    }
+private:
+    std::function<void()> m_onShow;
+    unsigned int m_msg = 0;
+};
+} // namespace
 
 Application::Application(QObject* parent)
     : QObject(parent)
@@ -153,6 +193,16 @@ bool Application::initialize() {
         &m_settings, m_scene.get(), m_snapshotCache.get());
     m_liveWindow    = std::make_unique<LiveWindow>(m_playerPool.get());
     m_liveWindow->setCanvasSize(m_settings.canvasWidth(), m_settings.canvasHeight());
+    // 제어 창 X → 송출화면 종료/유지 선택. 두 번째 실행 → 제어 창 복귀.
+    m_controlWindow->setCloseHandler([this]{ return confirmControlClose(); });
+    {
+        static ShowControlFilter* filter = nullptr;   // 앱 수명 동안 1개
+        if (!filter) {
+            QPointer<Application> self(this);
+            filter = new ShowControlFilter([self]{ if (self) self->showControlWindow(); });
+            qApp->installNativeEventFilter(filter);
+        }
+    }
     // ControlWindow 를 닫으면 앱이 종료되도록 — LiveWindow/rehearsal 는
     // quit 판정에서 제외. (기본 quitOnLastWindowClosed 는 모든 top-level 창을
     // 카운트해서, LiveWindow 가 살아있으면 앱 프로세스가 남아 있게 된다.)
@@ -493,9 +543,11 @@ bool Application::initialize() {
     //      확정 + 자동 진행 timer 재무장. (더블클릭이 더는 Play 를 유발하지 않으므로
     //      TAKE 가 Play 트리거 역할을 겸함.)
     connect(m_controlWindow.get(), &ControlWindow::takeRequested, this, [this]() {
-        // TAKE 발생 → BLACK 자동 해제 (실제 컨텐츠가 Live 에 나가므로).
+        // TAKE 발생 → 송출화면 숨김 자동 해제 (실제 컨텐츠가 Live 에 나가므로).
         if (m_blackoutActive) {
             m_blackoutActive = false;
+            m_autoPausedByOff = false;
+            applyOutputHidden(false);
             m_controlWindow->setBlackoutActive(false);
         }
         if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
@@ -560,16 +612,11 @@ bool Application::initialize() {
             });
 
     // ----- 표시 -----
+    // 다중 모니터: 제어 창은 송출 모니터가 아닌 곳에.
+    placeControlAwayFromLive();
     m_controlWindow->showMaximized();   // 처음 실행 시 전체화면(최대화)
     if (!useObs) {
-        // qt 엔진: outputMode 에 따라 fullscreen 또는 임의 좌표.
-        if (m_settings.outputMode() == QStringLiteral("screen")) {
-            m_liveWindow->showAtGeometry(
-                m_settings.outputX(),     m_settings.outputY(),
-                m_settings.canvasWidth(), m_settings.canvasHeight());
-        } else {
-            m_liveWindow->showOnMonitor(m_settings.outputMonitorIndex());
-        }
+        showLiveWindow();               // qt 엔진: outputMode 에 따라 fullscreen 또는 임의 좌표
     } else {
         qInfo() << "engine=obs — Live output via OBS projector "
                    "(LiveWindow hidden)";
@@ -652,13 +699,8 @@ void Application::installQtFallback(const QString& reason) {
     }
 
     // 3) OBS 경로에서 숨겨져 있던 LiveWindow 표시 — outputMode 따라 dispatch.
-    if (m_settings.outputMode() == QStringLiteral("screen")) {
-        m_liveWindow->showAtGeometry(
-            m_settings.outputX(),     m_settings.outputY(),
-            m_settings.canvasWidth(), m_settings.canvasHeight());
-    } else {
-        m_liveWindow->showOnMonitor(m_settings.outputMonitorIndex());
-    }
+    //    송출화면 숨김 상태였다면 숨김 유지.
+    if (!m_blackoutActive) showLiveWindow();
 
     // 4) 현재 Preview 를 즉시 다시 take (Live 검정 회피 — best-effort).
     //    이 시점에서 m_qtFallbackActive 는 아직 false → taken 핸들러는
@@ -1216,6 +1258,8 @@ void Application::onPlayPauseRequested() {
     auto ensurePowerOn = [this]() {
         if (m_blackoutActive) {
             m_blackoutActive = false;
+            m_autoPausedByOff = false;
+            applyOutputHidden(false);
             m_controlWindow->setBlackoutActive(false);
         }
     };
@@ -1596,6 +1640,133 @@ void Application::onPreviewCompleted() {
 // 리허설 창의 X(close) → ControlWindow 의 ▶ 상태를 강제 리셋.
 //  resetPreviewSim 내부 emit previewPlayingChanged(false) 가 다시
 //  onPreviewPlayingChanged(false) 를 호출하지만 hide()·applyScene({}) 는 idempotent.
+void Application::showLiveWindow() {
+    if (!m_liveWindow) return;
+    if (m_settings.outputMode() == QStringLiteral("screen")) {
+        m_liveWindow->showAtGeometry(
+            m_settings.outputX(),     m_settings.outputY(),
+            m_settings.canvasWidth(), m_settings.canvasHeight());
+    } else {
+        m_liveWindow->showOnMonitor(m_settings.outputMonitorIndex());
+    }
+}
+
+void Application::applyOutputHidden(bool hidden) {
+#if defined(UWP_HAS_OBS)
+    if (m_obsBackend && m_obsProc && !m_qtFallbackActive) {
+        m_obsProc->setProjectorVisible(!hidden);
+        return;
+    }
+#endif
+    if (!m_liveWindow) return;
+    // hide/show 만 — 창 플래그·스크린을 다시 잡지 않아 VLC 자식 HWND 유지.
+    //   fullscreen 등 windowState 는 hide 후에도 보존되어 show 시 복원된다.
+    if (hidden) m_liveWindow->hide();
+    else        m_liveWindow->show();
+    qInfo() << "Application: live output" << (hidden ? "hidden" : "shown");
+}
+
+QScreen* Application::liveOutputScreen() const {
+    const auto screens = QGuiApplication::screens();
+    if (screens.isEmpty()) return nullptr;
+    if (m_settings.outputMode() == QStringLiteral("screen")) {
+        const QRect r(m_settings.outputX(), m_settings.outputY(),
+                      m_settings.canvasWidth(), m_settings.canvasHeight());
+        return QGuiApplication::screenAt(r.center());
+    }
+    const bool obs = (m_settings.engine().compare(
+        QLatin1String("obs"), Qt::CaseInsensitive) == 0) && !m_qtFallbackActive;
+    int idx = obs ? m_settings.obs().projectorMonitor
+                  : m_settings.outputMonitorIndex();
+    // LiveWindow::showOnMonitor 와 같은 범위 밖 처리(마지막 모니터).
+    if (idx < 0 || idx >= screens.size()) idx = screens.size() - 1;
+    return screens.at(idx);
+}
+
+void Application::placeControlAwayFromLive() {
+    const auto screens = QGuiApplication::screens();
+    if (screens.size() < 2 || !m_controlWindow) return;
+    QScreen* live = liveOutputScreen();
+    if (!live) return;
+    QScreen* cur = QGuiApplication::screenAt(m_controlWindow->geometry().center());
+    if (!cur) cur = QGuiApplication::primaryScreen();
+    if (cur != live) return;
+    QScreen* target = QGuiApplication::primaryScreen();
+    if (target == live) {
+        target = nullptr;
+        for (QScreen* s : screens)
+            if (s != live) { target = s; break; }
+    }
+    if (!target) return;
+    const QRect ag = target->availableGeometry();
+    m_controlWindow->setGeometry(ag.adjusted(40, 40, -40, -40));
+    qInfo() << "Application: control window moved off live screen"
+            << live->name() << "→" << target->name();
+}
+
+bool Application::confirmControlClose() {
+    QMessageBox box(m_controlWindow.get());
+    box.setIcon(QMessageBox::Question);
+    box.setWindowTitle(tr("프로그램 종료"));
+    box.setText(tr("송출 화면을 어떻게 할까요?"));
+    box.setInformativeText(
+        tr("송출화면 종료: 송출 화면을 닫고 프로그램을 완전히 종료합니다.\n"
+           "송출화면 유지: 제어 창만 닫고 송출 화면은 계속 표시합니다.\n"
+           "  (작업 표시줄 오른쪽 아이콘이나 프로그램을 다시 실행하면 제어 창이 열립니다)"));
+    QPushButton* quitBtn = box.addButton(tr("송출화면 종료"), QMessageBox::DestructiveRole);
+    QPushButton* keepBtn = box.addButton(tr("송출화면 유지"), QMessageBox::AcceptRole);
+    QPushButton* cancel  = box.addButton(tr("취소"), QMessageBox::RejectRole);
+    box.setDefaultButton(cancel);
+    box.setEscapeButton(cancel);
+    box.exec();
+    if (box.clickedButton() == quitBtn) {
+        qInfo() << "Application: close — quit (live output closed)";
+        return true;
+    }
+    if (box.clickedButton() == keepBtn) {
+        qInfo() << "Application: close — keep live output, control to tray";
+        // 제어 창만 숨김. 마지막 창 판정으로 앱이 끝나지 않게 막는다.
+        qApp->setQuitOnLastWindowClosed(false);
+        QTimer::singleShot(0, this, [this]{
+            flushEditSave();
+            if (m_controlWindow) m_controlWindow->hide();
+            ensureTrayIcon();
+            if (m_tray) {
+                m_tray->show();
+                m_tray->showMessage(tr("uWeddingPlayer"),
+                    tr("송출 화면은 계속 표시됩니다.\n이 아이콘을 눌러 제어 창을 다시 열 수 있습니다."),
+                    QSystemTrayIcon::Information, 4000);
+            }
+        });
+    }
+    return false;   // 유지 / 취소
+}
+
+void Application::ensureTrayIcon() {
+    if (m_tray || !QSystemTrayIcon::isSystemTrayAvailable()) return;
+    m_tray = new QSystemTrayIcon(QIcon(QStringLiteral(":/icons/app_h_32.png")), this);
+    m_tray->setToolTip(tr("uWeddingPlayer — 송출 중 (눌러서 제어 창 열기)"));
+    auto* menu = new QMenu(m_controlWindow.get());
+    menu->addAction(tr("제어 창 열기"), this, [this]{ showControlWindow(); });
+    menu->addSeparator();
+    menu->addAction(tr("프로그램 종료 (송출화면 종료)"), this, []{ qApp->quit(); });
+    m_tray->setContextMenu(menu);
+    connect(m_tray, &QSystemTrayIcon::activated, this,
+            [this](QSystemTrayIcon::ActivationReason r){
+                if (r == QSystemTrayIcon::Trigger || r == QSystemTrayIcon::DoubleClick)
+                    showControlWindow();
+            });
+}
+
+void Application::showControlWindow() {
+    if (!m_controlWindow) return;
+    m_controlWindow->showMaximized();
+    m_controlWindow->raise();
+    m_controlWindow->activateWindow();
+    if (m_tray) m_tray->hide();
+    qApp->setQuitOnLastWindowClosed(true);
+}
+
 bool Application::eventFilter(QObject* obj, QEvent* event) {
     if (obj == m_rehearsalWindow.get() && event->type() == QEvent::Close) {
         if (m_controlWindow) m_controlWindow->resetPreviewSim();
@@ -1821,11 +1992,11 @@ void Application::onPageDisplayTimeEditRequested(const QString& pageId) {
         m_controlWindow->setPreviewDisplayTime(sec);
 }
 
-// Live 헤더 ON/OFF 토글 — 프로젝터 화면 마스크. clearLive 는 사용하지 않아
+// Live 헤더 송출화면 숨기기/보이기 토글. clearLive 는 사용하지 않아
 // 페이지 상태(영상 위치/이미지 경과 시간)를 보존한다.
-//   OFF: 자동 진행 timer 남은시간 저장 · 영상 pause · 위젯 hide (검정 마스크)
-//   ON : 위젯 show · 영상 resume · timer 남은시간으로 재시작 (자동 재개는 OFF
-//        가 자동 pause 를 발생시킨 경우에만; 사용자 ⏸ 상태였다면 마스크만 해제)
+//   숨기기: 자동 진행 timer 남은시간 저장 · 영상 pause · 송출 창 숨김(바탕화면)
+//   보이기: 송출 창 표시 · 영상 resume · timer 남은시간으로 재시작 (자동 재개는
+//          숨기기가 자동 pause 를 발생시킨 경우에만; 사용자 ⏸ 상태였다면 표시만)
 void Application::onBlackoutRequested() {
     if (!m_takeController) return;
     m_blackoutActive = !m_blackoutActive;
@@ -1845,13 +2016,13 @@ void Application::onBlackoutRequested() {
             m_playbackPaused    = true;
             m_autoPausedByOff   = true;   // ON 시 자동 resume 표식
         }
-        // 화면 마스크 — 위젯을 파괴하지 않고 hide 만 → 페이지 상태 보존.
-        if (m_liveWindow) m_liveWindow->setMasked(true);
+        // 송출 창 숨김 — 위젯은 파괴하지 않아 페이지 상태 보존, 바탕화면 노출.
+        applyOutputHidden(true);
         m_controlWindow->setLiveState(ControlWindow::LiveState::ScreenOff);
-        m_controlWindow->setStatusText(tr("Screen OFF"));
+        m_controlWindow->setStatusText(tr("송출화면 숨김"));
     } else {
-        // ---- ON ----
-        if (m_liveWindow) m_liveWindow->setMasked(false);
+        // ---- 보이기 ----
+        applyOutputHidden(false);
         if (m_autoPausedByOff) {
             // OFF 로 자동 pause 됐던 케이스 → 자동 resume.
             m_autoPausedByOff = false;

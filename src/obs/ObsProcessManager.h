@@ -55,6 +55,9 @@ public:
     // OBS 는 monitorIndex=-1 + projectorGeometry="WxH+X+Y" 로 이를 지원.
     // Ready 면 즉시 재오픈, 아니면 값만 저장 → 다음 Ready 때 사용.
     void setProjectorGeometry(int x, int y, int w, int h);
+    // 송출화면 보이기/숨기기 — 숨김이면 프로젝터 창을 닫고(바탕화면 노출),
+    // 이후 Ready·모니터 변경 시에도 다시 열지 않는다. 보이기면 다시 연다.
+    void setProjectorVisible(bool visible);
 
     State      state()  const { return m_state; }
     ObsClient* client() const { return m_client; }  // O4 가 동일 연결 재사용
@@ -103,6 +106,7 @@ private:
     // 스크린 모드 지원 — true 면 openProgramProjector 가 monitorIndex=-1 +
     // projectorGeometry="WxH+X+Y" 로 windowed projector 를 연다.
     bool m_useGeometry = false;
+    bool m_projectorHidden = false;   // 송출화면 숨기기 상태 — open 억제
     int  m_geoX = 0, m_geoY = 0, m_geoW = 1920, m_geoH = 1080;
 
     // 기동 시 OBS 프로파일 basic.ini 에 사전 기록할 초기 캔버스. Application 이

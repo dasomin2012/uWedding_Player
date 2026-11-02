@@ -421,7 +421,7 @@ void ObsProcessManager::hideObsMainWindow() {
 //   * m_useGeometry = true  → windowed (monitorIndex=-1 + projectorGeometry).
 //     LED 스크린이 데스크톱 부분 영역이거나 여러 모니터에 걸친 웨딩홀 세팅용.
 void ObsProcessManager::openProgramProjector() {
-    if (!m_client) return;
+    if (!m_client || m_projectorHidden) return;
     QJsonObject d;
     d[QStringLiteral("videoMixType")] =
         QStringLiteral("OBS_WEBSOCKET_VIDEO_MIX_TYPE_PROGRAM");
@@ -702,6 +702,16 @@ void ObsProcessManager::setProjectorGeometry(int x, int y, int w, int h) {
         return;
     closeProjectorWindows();
     QTimer::singleShot(200, this, [this]() { openProgramProjector(); });
+}
+
+// ---- 송출화면 보이기/숨기기 -----------------------------------
+void ObsProcessManager::setProjectorVisible(bool visible) {
+    if (m_projectorHidden == !visible) return;
+    m_projectorHidden = !visible;
+    qInfo() << "ObsProcessManager: projector" << (visible ? "shown" : "hidden");
+    if (m_state != State::Ready || !m_client) return;   // 다음 Ready 에서 반영
+    if (visible) openProgramProjector();
+    else         closeProjectorWindows();
 }
 
 } // namespace uwp

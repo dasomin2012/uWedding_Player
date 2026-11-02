@@ -6,9 +6,15 @@
 
 #include "Settings.h"
 
+class QScreen;
+class QSystemTrayIcon;
 class QTimer;
 
 namespace uwp {
+
+// 두 번째 실행 → 기존 인스턴스에 "제어 창 열기" 요청 (Win32 등록 메시지 이름).
+//   main.cpp 가 HWND_BROADCAST 로 보내고, Application 의 네이티브 필터가 수신.
+inline constexpr char kShowControlMessage[] = "Hanmac-uWeddingPlayer-ShowControl";
 
 class ControlWindow;
 class LiveWindow;
@@ -109,6 +115,20 @@ private:
     //   길이가 폴러로 확인될 때 무장(m_waitVideoEnd).
     void armPageAdvance(const Page& pg);
     QString currentNovaPresetId() const;            // O5: env > settings.default_preset_id
+
+    // 송출 창(qt LiveWindow) 을 설정(monitor/screen)대로 표시.
+    void showLiveWindow();
+    // 송출화면 보이기/숨기기 실제 반영 — qt: LiveWindow hide/show (바탕화면 노출),
+    //   obs: 프로젝터 창 닫기/열기.
+    void applyOutputHidden(bool hidden);
+    // 송출 화면이 놓일 모니터 (설정 기준 추정). 없으면 nullptr.
+    QScreen* liveOutputScreen() const;
+    // 다중 모니터에서 제어 창이 송출 모니터에 뜨지 않도록 다른 모니터로 이동.
+    void placeControlAwayFromLive();
+    // 제어 창 X — 송출화면 종료(앱 종료) / 유지(트레이 상주) / 취소. true=종료.
+    bool confirmControlClose();
+    void showControlWindow();                       // 트레이·재실행에서 제어 창 복귀
+    void ensureTrayIcon();
 #if defined(UWP_HAS_OBS)
     void installQtFallback(const QString& reason);  // O6-A: OBS Failed → qt
 #endif
@@ -138,6 +158,9 @@ private:
     // O6-A 폴백 후에도 LED 동기가 이어지도록 taken 라우팅 조건에 사용.
     bool m_qtFallbackActive = false;
 
+    // 송출화면 유지로 제어 창을 닫았을 때 상주 아이콘.
+    QSystemTrayIcon* m_tray = nullptr;
+
     // Phase 5b/5c — 현재 재생중(Play) program id ("" = 없음).
     QString m_currentProgramId;
     // UI-D Phase C — 재생중 프로그램 내 현재 페이지 인덱스.
@@ -156,7 +179,7 @@ private:
     // UI-D Phase C — 리허설 세션 내 현재 페이지 인덱스.
     int     m_previewPageIdx = 0;
 
-    // 응급 F2B — Live 검정 상태. 이후 TAKE 발생 시 자동 해제.
+    // 송출화면 숨김 상태 (구 응급 F2B 검정). 이후 TAKE·재생 시 자동 해제.
     bool    m_blackoutActive = false;
     // 자동 진행 일시정지 상태. m_currentProgramId/PageIdx 유지, 타이머 stop,
     // 영상 레이어 freeze. 재개 시 저장된 잔여 시간으로 타이머 재무장 + 재개.
