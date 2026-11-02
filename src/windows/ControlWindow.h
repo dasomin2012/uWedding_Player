@@ -138,9 +138,15 @@ private:
     void applyTitlebarTheme();               // Win32 DwmSetWindowAttribute — 다크 타이틀바
     void saveLayoutState();                  // QSplitter geometry → QSettings
     void restoreLayoutState();               // QSettings → QSplitter geometry (있으면)
+    // 최대화 상태에서 작업 표시줄이 창 하단과 겹치면 겹치는 만큼 창 하단 여백
+    //   — 작업 표시줄이 올라와도 상태바·프로그램 탭을 가리지 않음.
+    void updateTaskbarInset();
 
 protected:
     void showEvent(QShowEvent* event) override;   // show 후 HWND 확보 → 타이틀바 재적용
+    void changeEvent(QEvent* event) override;     // 최대화/복원 → 작업 표시줄 여백 갱신
+    void resizeEvent(QResizeEvent* event) override; // 작업 영역 변화로 크기 바뀔 때도 갱신
+    void moveEvent(QMoveEvent* event) override;     // 모니터 이동 시 갱신
     void closeEvent(QCloseEvent* event) override; // 종료 전 레이아웃 상태 저장
 
     Settings*        m_settings   = nullptr;

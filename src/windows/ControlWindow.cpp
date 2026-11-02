@@ -23,6 +23,9 @@
 #include <QApplication>
 #include <QShortcut>
 #include <QDebug>
+#include <QEvent>
+#include <QMoveEvent>
+#include <QResizeEvent>
 #include <QFile>
 #include <QFrame>
 #include <QGridLayout>
@@ -1322,7 +1325,7 @@ void ControlWindow::createCentralLayout() {
     auto* central = new QWidget(this);
     central->setObjectName("Central");
     auto* root = new QVBoxLayout(central);
-    root->setContentsMargins(6, 6, 6, 6);
+    root->setContentsMargins(6, 6, 6, 10);   // 하단은 살짝 더 — 답답함 완화
     root->setSpacing(6);
     root->addWidget(outer, 1);
     setCentralWidget(central);
@@ -1671,6 +1674,68 @@ void ControlWindow::showEvent(QShowEvent* event) {
     if (!m_layoutRestored) {
         m_layoutRestored = true;
         restoreLayoutState();
+    }
+    updateTaskbarInset();
+}
+
+void ControlWindow::changeEvent(QEvent* event) {
+    QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::WindowStateChange) updateTaskbarInset();
+}
+
+void ControlWindow::resizeEvent(QResizeEvent* event) {
+    QMainWindow::resizeEvent(event);
+    // 같은 모니터에 전체화면 창(Live)이 뜨면 Windows 가 작업 영역을 넓혀
+    // 최대화 창이 작업 표시줄 아래까지 커진다 → 크기 바뀔 때마다 재계산.
+    updateTaskbarInset();
+}
+
+void ControlWindow::moveEvent(QMoveEvent* event) {
+    QMainWindow::moveEvent(event);
+    updateTaskbarInset();   // 다른 모니터로 이동 — 그 모니터의 작업 표시줄 기준
+}
+
+void ControlWindow::updateTaskbarInset() {
+    int inset = 0;
+#ifdef _WIN32
+    if (isMaximized() || isFullScreen()) {
+        // 이 창이 있는 모니터의 작업 표시줄(주: Shell_TrayWnd, 보조 모니터:
+        // Shell_SecondaryTrayWnd)이 하단에 있으면, 펼쳐진 위치(모니터 하단 -
+        // 높이)가 창 클라이언트 하단과 겹치는 만큼 여백. 자동 숨김으로 접혀
+        // 있어도 높이는 같으므로 동일하게 계산된다. contentsMargins 는 클라이언트
+        // 내부라 이 계산 결과에 영향 없음.
+        const HWND hwnd = reinterpret_cast<HWND>(winId());
+        const HMONITOR myMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi{};
+        mi.cbSize = sizeof(mi);
+        RECT client{};
+        if (GetMonitorInfoW(myMon, &mi) && GetClientRect(hwnd, &client)) {
+            POINT br{ client.right, client.bottom };
+            ClientToScreen(hwnd, &br);
+            const LONG monMidY = (mi.rcMonitor.top + mi.rcMonitor.bottom) / 2;
+            int overlapPx = 0;
+            for (const wchar_t* cls : { L"Shell_TrayWnd", L"Shell_SecondaryTrayWnd" }) {
+                HWND tb = nullptr;
+                while ((tb = FindWindowExW(nullptr, tb, cls, nullptr)) != nullptr) {
+                    RECT r{};
+                    if (!GetWindowRect(tb, &r)) continue;
+                    if (MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST) != myMon) continue;
+                    const LONG h = r.bottom - r.top;
+                    // 가로형 + 모니터 아래쪽 = 하단 작업 표시줄.
+                    if (r.right - r.left <= h || r.top < monMidY) continue;
+                    const LONG shownTop = mi.rcMonitor.bottom - h;
+                    overlapPx = qMax(overlapPx, int(br.y - shownTop));
+                }
+            }
+            // 물리 px → 논리 px (고DPI). 비정상 값 방어로 상한.
+            if (overlapPx > 0)
+                inset = qBound(0, qRound(overlapPx / devicePixelRatioF()), 120);
+        }
+    }
+#endif
+    if (contentsMargins().bottom() != inset) {
+        setContentsMargins(0, 0, 0, inset);
+        qInfo() << "ControlWindow: taskbar inset =" << inset;
     }
 }
 
