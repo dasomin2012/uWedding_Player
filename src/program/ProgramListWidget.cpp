@@ -31,6 +31,10 @@ namespace uwp {
 
 static const QSize kThumbSize(180, 101);       // 16:9 (LED 캔버스 비율)
 static const QSize kCardSize(212, 172);        // 카드 (썸네일 + 이름 여백)
+// 접힘(이름 버튼) 모드 셀 / 스트립 높이 — 운영자가 누르기 쉽게 큼직하게.
+static const QSize kCompactCell(220, 54);
+static constexpr int kCompactStripH = 58;
+static constexpr qreal kCompactFontUp = 2.0;  // 이름 글자 크기 +pt
 // 재생중 상태 배지("ON AIR")용 role — bool, delegate 가 읽음.
 static constexpr int kActiveRole      = Qt::UserRole + 1;
 // endAction 배지용 role — int (EndAction 값). displayTime > 0 일 때만 렌더.
@@ -113,9 +117,12 @@ public:
             p->setBrush(bg);
             p->drawRoundedRect(pill, 6, 6);
 
-            // 이름 — 굵게, 명확한 대비색.
+            // 이름 — 굵게·조금 크게, 명확한 대비색.
             QFont f = opt.font;
             f.setBold(true);
+            // 앱 글꼴이 px 지정(QSS)이면 pointSizeF() 는 -1 → px 로 키운다.
+            if (f.pointSizeF() > 0) f.setPointSizeF(f.pointSizeF() + kCompactFontUp);
+            else if (f.pixelSize() > 0) f.setPixelSize(f.pixelSize() + 3);
             p->setFont(f);
             p->setPen(textCol);
             const QString name = idx.data(Qt::DisplayRole).toString();
@@ -165,8 +172,8 @@ public:
         //   선택(편집 대상) = 앰버
         //   hover = 크림
         //   기본 = 백색 + 브론즈 테두리
-        //  컴팩트 pill 실크기 = 셀(200x40) - card 여백(4) - pill 여백(2) = 188x28.
-        //  풀 모드에서도 시각 통일을 위해 세로 28 로 명시 고정.
+        //  풀 모드 이름 pill 은 썸네일 아래 여백에 맞춰 세로 28 로 고정
+        //  (접힘 모드 pill 은 kCompactCell 기준으로 더 큼).
         const QString name = idx.data(Qt::DisplayRole).toString();
         const QRect pill(card.x() + kPad,
                          iconRect.bottom() + kPad,
@@ -354,7 +361,7 @@ ProgramListWidget::ProgramListWidget(QWidget* parent)
 
     // [카드 리스트 stretch=1  |  + 추가 (세로 중앙)]
     //   버튼은 자기 sizeHint 만 취해 스트립 우측 세로 중앙에 위치.
-    //   리스트가 setFixedHeight(44/180) 를 통해 스트립 세로 크기 결정.
+    //   리스트가 setFixedHeight(kCompactStripH/180) 를 통해 스트립 세로 크기 결정.
     auto* lay = new QHBoxLayout(this);
     lay->setContentsMargins(0, 4, 0, 0);
     lay->setSpacing(6);
@@ -427,7 +434,7 @@ void ProgramListWidget::setPrograms(const QVector<Program>& programs,
         item->setData(kDisplayTimeRole, (!p.pages.isEmpty()
                                          && p.pages.last().endAction == EndAction::Next) ? 1 : 0);
         // 현재 접힘 상태에 맞춰 sizeHint 지정 — setPrograms 가 접힘 중에 불려도 정확.
-        item->setSizeHint(m_collapsed ? QSize(200, 40) : kCardSize);
+        item->setSizeHint(m_collapsed ? kCompactCell : kCardSize);
     }
     setActiveProgram(m_activeId);   // 강조 유지
 }
@@ -511,11 +518,11 @@ void ProgramListWidget::setCollapsed(bool collapsed) {
     if (auto* del = m_list->itemDelegate())
         del->setProperty("collapsedMode", collapsed);
 
-    const QSize cell = collapsed ? QSize(200, 40) : kCardSize;
+    const QSize cell = collapsed ? kCompactCell : kCardSize;
     if (collapsed) {
         m_list->setIconSize(QSize(0, 0));
         m_list->setSpacing(2);
-        setFixedHeight(44);
+        setFixedHeight(kCompactStripH);
     } else {
         m_list->setIconSize(kThumbSize);
         m_list->setSpacing(2);   // 카드 172 를 컨테이너 180 안에 맞춤
