@@ -25,6 +25,9 @@ public:
     bool isReady()   const;    // 첫 프레임 실제 렌더 완료 (원자적 스왑 동기화용)
     void freeze();             // 첫 프레임에서 정지(cue)
     void resume();             // 재개
+    qint64 positionMs() const; // 재생 진행 바용 (모르면 0)
+    qint64 lengthMs()   const;
+    bool   isAdvancing() const;
 
 private:
     void bindSurface();        // winId() 를 LivePlayer 에 바인딩

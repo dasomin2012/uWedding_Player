@@ -72,4 +72,8 @@ bool VideoWidget::isReady() const {
 void VideoWidget::freeze() { if (m_player) m_player->freeze(); }
 void VideoWidget::resume() { if (m_player) m_player->resume(); }
 
+qint64 VideoWidget::positionMs() const { return m_player ? m_player->positionMs() : 0; }
+qint64 VideoWidget::lengthMs()   const { return m_player ? m_player->lengthMs()   : 0; }
+bool   VideoWidget::isAdvancing() const { return m_player && m_player->isAdvancing(); }
+
 } // namespace uwp

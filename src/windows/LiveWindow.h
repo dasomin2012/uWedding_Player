@@ -46,6 +46,9 @@ public:
     // 동기 실행이지만 콜백 시그니처는 obs 백엔드와 동일하게 유지.
     void requestMirrorSnapshot(int maxWidthPx, MirrorCallback cb) override;
 
+    // 재생 진행 바 — 송출 중 대표 영상(primaryVideoIndex)의 위치/길이. 동기.
+    void requestPlaybackStatus(PlaybackCallback cb) override;
+
     bool playVideo(const QString& path);   // 단일 전체화면 영상 레이어
     void stopVideo();
 

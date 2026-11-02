@@ -194,6 +194,7 @@ void ObsLiveBackend::seed() {
                             ObsClient* c4 = client();
                             auto finish = [this]() {
                                 m_inputsByScene.clear();
+                                m_primaryVideoByScene.clear();
                                 m_seeded = true;
                                 qInfo() << "ObsLiveBackend: seeded "
                                            "(canvas/scenes/transitions, "
@@ -266,6 +267,7 @@ void ObsLiveBackend::rebuildScene(const QString& scene,
 
     const QStringList old = m_inputsByScene.value(scene);
     m_inputsByScene[scene].clear();
+    m_primaryVideoByScene.remove(scene);
 
     if (old.isEmpty()) {
         buildLayer(scene, layers, 0, std::move(done));
@@ -361,6 +363,8 @@ void ObsLiveBackend::buildLayer(const QString& scene, QVector<Layer> layers,
     const QString inputName =
         QStringLiteral("uwp_%1").arg(++m_inputSeq);
     m_inputsByScene[scene] << inputName;
+    if (i == primaryVideoIndex(layers))
+        m_primaryVideoByScene.insert(scene, { inputName, playbackLabel(L) });
 
     qInfo() << "ObsLiveBackend: layer" << L.id << "→ input" << inputName
             << kind << "geom" << L.geometry << "file=" << mediaPath;
@@ -553,6 +557,38 @@ void ObsLiveBackend::requestMirrorSnapshot(int maxWidthPx, MirrorCallback cb) {
             QImage img;
             img.loadFromData(bytes, "PNG");
             cb(img);
+        });
+}
+
+// ---- 재생 진행 바 -----------------------------------------------
+// GetMediaInputStatus: mediaState / mediaDuration(ms, null 가능) /
+// mediaCursor(ms, null 가능). 첫 transition 전(program 미정)은 영상 없음.
+void ObsLiveBackend::requestPlaybackStatus(PlaybackCallback cb) {
+    if (!cb) return;
+
+    ObsClient* c = client();
+    const auto it = m_primaryVideoByScene.constFind(m_programScene);
+    if (!c || !c->isReady() || m_programScene.isEmpty()
+        || it == m_primaryVideoByScene.constEnd()) {
+        cb(PlaybackStatus{});
+        return;
+    }
+
+    const PrimaryVideo pv = it.value();
+    QJsonObject req{ { QStringLiteral("inputName"), pv.inputName } };
+    c->request(QStringLiteral("GetMediaInputStatus"), req,
+        [cb, pv](bool ok, const QJsonObject& data, const QString&) {
+            if (!ok) { cb(PlaybackStatus{}); return; }   // 다음 틱에 재시도
+            PlaybackStatus st;
+            st.valid      = true;
+            st.playing    = data.value(QStringLiteral("mediaState")).toString()
+                            == QLatin1String("OBS_MEDIA_STATE_PLAYING");
+            st.positionMs = qMax<qint64>(0,
+                data.value(QStringLiteral("mediaCursor")).toVariant().toLongLong());
+            st.lengthMs   = qMax<qint64>(0,
+                data.value(QStringLiteral("mediaDuration")).toVariant().toLongLong());
+            st.label      = pv.label;
+            cb(st);
         });
 }
 

@@ -10,6 +10,7 @@ class QPushButton;
 class QAction;
 class QImage;
 class QTimer;
+class QProgressBar;
 
 namespace uwp {
 
@@ -52,6 +53,12 @@ public slots:
     // LiveMirror: Application 이 폴링한 프레임을 우상단 "Live 송출" 패널로.
     // 빈 QImage 는 무시(직전 프레임 유지).
     void setLiveMirrorImage(const QImage& img);
+
+    // 재생 진행 바 (Live 미러 아래, 표시 전용).
+    //  valid=false : 송출 중 영상 없음 → "--:-- / --:--"
+    //  lengthMs=0  : 길이 미확정 → 위치만 표시, 바는 0
+    void setLivePlayback(bool valid, bool playing, qint64 positionMs,
+                         qint64 lengthMs, const QString& label);
 
     // UI-F: Preview 툴바 시간 표시.
     //  seconds < 0 : 프로그램 없음 → "표시 시간: —"
@@ -136,6 +143,9 @@ protected:
     PreviewCanvas*   m_canvas     = nullptr;
     PropertyPanel*   m_property   = nullptr;
     QLabel*            m_liveMirror  = nullptr;
+    QProgressBar*      m_playbackBar  = nullptr;   // Live 대표 영상 진행 바
+    QLabel*            m_playbackName = nullptr;   // 대표 영상 이름
+    QLabel*            m_playbackTime = nullptr;   // "00:12 / 01:00"
     ProgramListWidget* m_programList = nullptr;
     PageProperties*    m_pageProps   = nullptr;   // 우측 [페이지 속성] 섹션
     ProgramProperties* m_progProps   = nullptr;   // 우측 [프로그램 속성] 섹션

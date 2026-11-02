@@ -174,6 +174,9 @@ private:
     // LiveMirror — 우상단 "Live 송출" 미러 폴링 (qt/obs 자동 분기).
     QTimer* m_liveMirrorTimer = nullptr;
     bool    m_liveMirrorInFlight = false;   // obs 비동기 응답 대기 중 중복 방지
+    // 재생 진행 바 — Live 대표 영상 위치/길이 폴링 (qt/obs 자동 분기).
+    QTimer* m_playbackTimer    = nullptr;
+    bool    m_playbackInFlight = false;
     ILiveSink* currentLiveSink() const;     // engine + fallback 반영
 
     // BGM 재생기 — 프로그램 단위 배경음. playProgram 시 시작, 다른 프로그램

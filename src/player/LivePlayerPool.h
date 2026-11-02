@@ -25,6 +25,9 @@ public:
     bool isPrimed() const;                    // 실제 첫 프레임 렌더 완료(강한 신호)
     void freeze();                            // 첫 프레임에서 일시정지(cue)
     void resume();                            // 재개
+    qint64 positionMs() const;                // 현재 재생 위치(ms), 모르면 0
+    qint64 lengthMs() const;                  // 전체 길이(ms), 모르면 0
+    bool isAdvancing() const;                 // libVLC 가 실제 재생 중(freeze 면 false)
 
     LivePlayer(const LivePlayer&)            = delete;
     LivePlayer& operator=(const LivePlayer&) = delete;

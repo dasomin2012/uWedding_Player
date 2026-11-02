@@ -388,6 +388,24 @@ bool Application::initialize() {
     });
     m_liveMirrorTimer->start();
 
+    // 재생 진행 바 — Live 대표 영상 위치/길이 폴러 (표시 전용).
+    //   qt: libVLC get_time/get_length 동기. obs: GetMediaInputStatus 비동기,
+    //   in-flight 가드로 응답 도착 전 중복 요청 방지(미러 폴러와 같은 패턴).
+    m_playbackTimer = new QTimer(this);
+    m_playbackTimer->setInterval(250);
+    connect(m_playbackTimer, &QTimer::timeout, this, [this, ctrl]() {
+        if (m_playbackInFlight) return;
+        ILiveSink* sink = currentLiveSink();
+        if (!sink || !ctrl) return;
+        m_playbackInFlight = true;
+        sink->requestPlaybackStatus([this, ctrl](const PlaybackStatus& st) {
+            m_playbackInFlight = false;
+            if (ctrl) ctrl->setLivePlayback(st.valid, st.playing, st.positionMs,
+                                            st.lengthMs, st.label);
+        });
+    });
+    m_playbackTimer->start();
+
     // ----- 송출 백엔드 선택 (engine: qt | obs) -----
     ILiveSink* sink   = m_liveWindow.get();
     bool       useObs = false;
@@ -654,6 +672,7 @@ void Application::shutdown() {
     // 후 dangling 접근 위험).
     if (m_programAdvanceTimer) m_programAdvanceTimer->stop();
     if (m_liveMirrorTimer)     m_liveMirrorTimer->stop();
+    if (m_playbackTimer)       m_playbackTimer->stop();
     if (m_editSaveTimer)       m_editSaveTimer->stop();
 
     if (m_liveWindow) m_liveWindow->stopVideo();

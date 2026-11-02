@@ -34,6 +34,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPixmap>
+#include <QProgressBar>
 #include <QSizePolicy>
 #include <QTime>
 #include <QPushButton>
@@ -330,6 +331,9 @@ QScrollBar::handle:horizontal:hover { background: #8a5a3b; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 
 QLabel#LiveMirror { background: #0e0d0c; color: #6a5f55; border-radius: 6px; }
+QProgressBar#LivePlayback { background: #e6ddd0; border: 0; border-radius: 3px; }
+QProgressBar#LivePlayback::chunk { background: #8a5a3b; border-radius: 3px; }
+QLabel#LivePlaybackName, QLabel#LivePlaybackTime { color: #6a5f55; font-size: 11px; }
 
 QTabWidget#BottomTabs::pane {
     background: transparent;
@@ -625,6 +629,9 @@ QScrollBar::handle:horizontal:hover { background: #c8a37a; }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 
 QLabel#LiveMirror { background: #050403; color: #4a4038; border-radius: 6px; }
+QProgressBar#LivePlayback { background: #2a241f; border: 0; border-radius: 3px; }
+QProgressBar#LivePlayback::chunk { background: #c8a37a; border-radius: 3px; }
+QLabel#LivePlaybackName, QLabel#LivePlaybackTime { color: #a89a8c; font-size: 11px; }
 
 QTabWidget#BottomTabs::pane {
     background: transparent;
@@ -745,6 +752,9 @@ QPushButton#CollapsibleToggle {
     font-size: 11px;
 }
 QPushButton#CollapsibleToggle:hover { background: rgba(128,128,128,0.15); border-radius: 4px; }
+QProgressBar#LivePlayback { background: rgba(128,128,128,0.25); border: 0; border-radius: 3px; }
+QProgressBar#LivePlayback::chunk { background: #c8a37a; border-radius: 3px; }
+QLabel#LivePlaybackName, QLabel#LivePlaybackTime { font-size: 11px; }
 )";
 
 QString loadQssFromResource(const QString& path) {
@@ -995,6 +1005,26 @@ void ControlWindow::createCentralLayout() {
     m_liveMirror->setObjectName("LiveMirror");
     m_liveMirror->setAlignment(Qt::AlignCenter);
     m_liveMirror->setMinimumSize(240, 135);   // 16:9 mini
+
+    // ----- 재생 진행 바 (미러 아래, 표시 전용) -----
+    m_playbackBar = new QProgressBar;
+    m_playbackBar->setObjectName("LivePlayback");
+    m_playbackBar->setRange(0, 1000);
+    m_playbackBar->setValue(0);
+    m_playbackBar->setTextVisible(false);
+    m_playbackBar->setFixedHeight(6);
+    m_playbackName = new QLabel;
+    m_playbackName->setObjectName("LivePlaybackName");
+    m_playbackName->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_playbackTime = new QLabel;
+    m_playbackTime->setObjectName("LivePlaybackTime");
+    m_playbackTime->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    {
+        QFont mono(QStringLiteral("Consolas"));
+        mono.setStyleHint(QFont::Monospace);
+        m_playbackTime->setFont(mono);
+    }
+    setLivePlayback(false, false, 0, 0, QString());
 
     // ----- Programs (UI-C 카드형) -----
     m_programList = new ProgramListWidget;
@@ -1520,6 +1550,20 @@ QWidget* ControlWindow::buildLivePanel() {
     v->setSpacing(8);
     v->addWidget(m_liveMirror, 1);
 
+    // [영상 이름 ......  00:12 / 01:00]
+    // [■■■■■■■□□□□□□□□□□□□□□□□□□□□□□□□]
+    auto* pb = new QVBoxLayout;
+    pb->setSpacing(3);
+    pb->setContentsMargins(0, 0, 0, 0);
+    auto* pbTop = new QHBoxLayout;
+    pbTop->setSpacing(6);
+    pbTop->setContentsMargins(0, 0, 0, 0);
+    pbTop->addWidget(m_playbackName, 1);
+    pbTop->addWidget(m_playbackTime);
+    pb->addLayout(pbTop);
+    pb->addWidget(m_playbackBar);
+    v->addLayout(pb);
+
     // [       TAKE       ] [Fade/Cut] [▶/⏸] — TAKE 는 늘어남, 나머지 컴팩트.
     auto* row = new QHBoxLayout;
     row->setSpacing(6);
@@ -1771,6 +1815,42 @@ void ControlWindow::setLiveMirrorImage(const QImage& img) {
     if (labelSize.width() <= 0 || labelSize.height() <= 0) return;
     m_liveMirror->setPixmap(QPixmap::fromImage(img).scaled(
         labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
+// 재생 진행 바: 1시간 미만 mm:ss, 이상 h:mm:ss. 일시정지면 ⏸ 접두.
+void ControlWindow::setLivePlayback(bool valid, bool playing,
+                                    qint64 positionMs, qint64 lengthMs,
+                                    const QString& label) {
+    if (!m_playbackBar || !m_playbackName || !m_playbackTime) return;
+
+    if (!valid) {
+        m_playbackBar->setValue(0);
+        m_playbackName->setText(tr("송출 중인 영상 없음"));
+        m_playbackName->setToolTip(QString());
+        m_playbackTime->setText(QStringLiteral("--:-- / --:--"));
+        return;
+    }
+
+    auto fmt = [](qint64 ms) {
+        const qint64 s = qMax<qint64>(0, ms) / 1000;
+        if (s >= 3600)
+            return QString::asprintf("%lld:%02lld:%02lld",
+                                     s / 3600, (s / 60) % 60, s % 60);
+        return QString::asprintf("%02lld:%02lld", s / 60, s % 60);
+    };
+
+    const qint64 pos = (lengthMs > 0) ? qMin(positionMs, lengthMs) : positionMs;
+    m_playbackBar->setValue(lengthMs > 0
+        ? static_cast<int>(pos * 1000 / lengthMs) : 0);
+    m_playbackTime->setText(
+        (playing ? QString() : QStringLiteral("⏸ "))
+        + fmt(pos) + QStringLiteral(" / ")
+        + (lengthMs > 0 ? fmt(lengthMs) : QStringLiteral("--:--")));
+
+    const int w = qMax(0, m_playbackName->width());
+    m_playbackName->setText(
+        m_playbackName->fontMetrics().elidedText(label, Qt::ElideMiddle, w));
+    m_playbackName->setToolTip(label);
 }
 
 } // namespace uwp

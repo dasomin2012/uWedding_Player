@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QImage>
+#include <QString>
 #include <QVector>
 #include <functional>
 
@@ -9,6 +10,39 @@
 class QWidget;
 
 namespace uwp {
+
+// Live 재생 진행 상태 (ControlWindow 재생 바용). valid=false 면 영상 없음.
+struct PlaybackStatus {
+    bool    valid      = false;
+    bool    playing    = false;   // 실제 진행 중(일시정지/정지면 false)
+    qint64  positionMs = 0;
+    qint64  lengthMs   = 0;       // 0 = 아직 길이 모름
+    QString label;                // 대표 영상 이름(레이어명 또는 파일명)
+};
+
+// 여러 영상 레이어 중 진행 바에 표시할 "대표 영상" — 면적 최대, 동률이면
+// zIndex 가 높은 쪽. 영상이 없으면 -1. 두 백엔드가 같은 규칙을 쓰도록 공유.
+inline int primaryVideoIndex(const QVector<Layer>& layers) {
+    int best = -1;
+    double bestArea = -1.0;
+    for (int i = 0; i < layers.size(); ++i) {
+        const Layer& l = layers[i];
+        if (l.mediaType != MediaType::Video) continue;
+        const double area = l.geometry.width() * l.geometry.height();
+        if (best < 0 || area > bestArea
+            || (area == bestArea && l.zIndex > layers[best].zIndex)) {
+            best = i;
+            bestArea = area;
+        }
+    }
+    return best;
+}
+
+inline QString playbackLabel(const Layer& l) {
+    if (!l.name.isEmpty()) return l.name;
+    const int slash = qMax(l.media.lastIndexOf('/'), l.media.lastIndexOf('\\'));
+    return slash >= 0 ? l.media.mid(slash + 1) : l.media;
+}
 
 // Take 경로의 송출 백엔드 추상.
 // Qt/libVLC(LiveWindow) 또는 OBS(ObsLiveBackend) 가 구현한다.
@@ -41,6 +75,15 @@ public:
     using MirrorCallback = std::function<void(const QImage&)>;
     virtual void requestMirrorSnapshot(int /*maxWidthPx*/, MirrorCallback cb) {
         if (cb) cb(QImage{});
+    }
+
+    // Live 대표 영상의 재생 위치/길이 요청 (표시 전용, seek 없음).
+    // qt 백엔드: 동기 (libVLC get_time/get_length),
+    // obs 백엔드: 비동기 (websocket GetMediaInputStatus).
+    // 미지원/영상 없음이면 valid=false 로 1회 콜백.
+    using PlaybackCallback = std::function<void(const PlaybackStatus&)>;
+    virtual void requestPlaybackStatus(PlaybackCallback cb) {
+        if (cb) cb(PlaybackStatus{});
     }
 };
 

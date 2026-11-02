@@ -46,6 +46,9 @@ public:
     // 미준비/미시딩 상태에서는 QImage() 로 콜백.
     void requestMirrorSnapshot(int maxWidthPx, MirrorCallback cb) override;
 
+    // 재생 진행 바 — program 씬 대표 영상 input 에 GetMediaInputStatus (비동기).
+    void requestPlaybackStatus(PlaybackCallback cb) override;
+
 signals:
     void transitionEnded();   // O5 NovaStar 동기 지점
 
@@ -79,6 +82,10 @@ private:
     QString m_programScene;                        // 현재 송출 씬 ("" = 미정)
     QHash<QString, QStringList> m_inputsByScene;   // 우리가 만든 input 추적
     quint64 m_inputSeq = 0;                        // 세션 유니크 input 이름용
+
+    // 재생 진행 바 — 씬 → 대표 영상 (inputName, 표시 라벨).
+    struct PrimaryVideo { QString inputName; QString label; };
+    QHash<QString, PrimaryVideo> m_primaryVideoByScene;
 
     bool                  m_havePending = false;
     QVector<Layer>        m_pendingLayers;

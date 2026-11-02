@@ -354,6 +354,25 @@ void LiveWindow::resumeAllVideos() {
             if (auto* vw = qobject_cast<VideoWidget*>(ll.widget)) vw->resume();
 }
 
+void LiveWindow::requestPlaybackStatus(PlaybackCallback cb) {
+    if (!cb) return;
+    QVector<Layer> layers;
+    layers.reserve(m_layers.size());
+    for (const LiveLayer& ll : m_layers) layers << ll.layer;
+    const int idx = primaryVideoIndex(layers);
+    auto* vw = (idx >= 0) ? qobject_cast<VideoWidget*>(m_layers[idx].widget)
+                          : nullptr;
+    if (!vw) { cb(PlaybackStatus{}); return; }
+
+    PlaybackStatus st;
+    st.valid      = true;
+    st.playing    = vw->isAdvancing();
+    st.positionMs = vw->positionMs();
+    st.lengthMs   = vw->lengthMs();
+    st.label      = playbackLabel(m_layers[idx].layer);
+    cb(st);
+}
+
 // Screen OFF/ON 마스크 — 위젯을 파괴하지 않아 페이지 상태(영상 위치·이미지)
 // 그대로 유지. hide() 는 native HWND(VLC)의 SW_HIDE 로 처리되어 검정 배경 노출.
 void LiveWindow::setMasked(bool masked) {

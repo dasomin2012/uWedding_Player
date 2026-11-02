@@ -175,6 +175,34 @@ void LivePlayer::resume() {
     d->playing = true;
 }
 
+qint64 LivePlayer::positionMs() const {
+#ifdef UWP_HAS_VLC
+    if (!d->player) return 0;
+    const libvlc_time_t t = libvlc_media_player_get_time(d->player);
+    return t > 0 ? static_cast<qint64>(t) : 0;   // -1 = 미디어 없음
+#else
+    return 0;
+#endif
+}
+
+qint64 LivePlayer::lengthMs() const {
+#ifdef UWP_HAS_VLC
+    if (!d->player) return 0;
+    const libvlc_time_t t = libvlc_media_player_get_length(d->player);
+    return t > 0 ? static_cast<qint64>(t) : 0;
+#else
+    return 0;
+#endif
+}
+
+bool LivePlayer::isAdvancing() const {
+#ifdef UWP_HAS_VLC
+    return d->player && libvlc_media_player_is_playing(d->player);
+#else
+    return false;
+#endif
+}
+
 // ============================================================
 // LivePlayerPool
 // ============================================================
